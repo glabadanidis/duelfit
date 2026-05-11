@@ -24,7 +24,7 @@ function statusBadge(status) {
   return map[status] || { label: status, color: colors.textSecondary };
 }
 
-function ChallengeCard({ item, currentUserId, onAccept, onDecline }) {
+function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult, navigation }) {
   const isReceived = item.opponent_id === currentUserId;
   const badge = statusBadge(item.status);
   const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
@@ -76,16 +76,23 @@ function ChallengeCard({ item, currentUserId, onAccept, onDecline }) {
           <TouchableOpacity style={styles.declineBtn} onPress={() => onDecline(item.id)}>
             <Text style={styles.declineBtnText}>✕  Decline</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.acceptBtn} onPress={() => onAccept(item.id)}>
+          <TouchableOpacity style={styles.acceptBtn} onPress={() => onAccept(item)}>
             <Text style={styles.acceptBtnText}>✓  Accept</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {/* Mark Result for accepted challenges */}
+      {item.status === 'accepted' && (
+        <TouchableOpacity style={styles.markResultBtn} onPress={() => onMarkResult(item)}>
+          <Text style={styles.markResultBtnText}>🏁  Mark Result</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
 }
 
-export default function ChallengesScreen() {
+export default function ChallengesScreen({ navigation }) {
   const [userId, setUserId] = useState(null);
   const [challenges, setChallenges] = useState([]);
   const [tab, setTab] = useState('received'); // 'received' | 'sent'
@@ -124,13 +131,12 @@ export default function ChallengesScreen() {
     setRefreshing(false);
   }
 
-  async function handleAccept(challengeId) {
-    const { error } = await supabase
-      .from('challenges')
-      .update({ status: 'accepted' })
-      .eq('id', challengeId);
-    if (error) return Alert.alert('Error', error.message);
-    loadData();
+  function handleAccept(challenge) {
+    navigation.navigate('AcceptPick', { challenge });
+  }
+
+  function handleMarkResult(challenge) {
+    navigation.navigate('MarkResult', { challenge, currentUserId: userId });
   }
 
   async function handleDecline(challengeId) {
@@ -207,6 +213,7 @@ export default function ChallengesScreen() {
               currentUserId={userId}
               onAccept={handleAccept}
               onDecline={handleDecline}
+              onMarkResult={handleMarkResult}
             />
           )}
         />
@@ -255,6 +262,8 @@ const styles = StyleSheet.create({
   declineBtnText: { color: '#EF4444', fontWeight: '700', fontSize: 14 },
   acceptBtn: { flex: 1, backgroundColor: '#10B981', borderRadius: 10, padding: 11, alignItems: 'center' },
   acceptBtnText: { color: colors.white, fontWeight: '700', fontSize: 14 },
+  markResultBtn: { backgroundColor: colors.primary + '22', borderWidth: 1, borderColor: colors.primary, borderRadius: 10, padding: 11, alignItems: 'center' },
+  markResultBtnText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
 
   emptyCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 40, alignItems: 'center', borderWidth: 1, borderColor: colors.border, marginTop: 20 },
   emptyEmoji: { fontSize: 40, marginBottom: 12 },

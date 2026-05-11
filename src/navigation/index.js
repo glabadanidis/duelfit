@@ -16,6 +16,8 @@ import Step1Match from '../screens/NewChallenge/Step1Match';
 import Step2Pick from '../screens/NewChallenge/Step2Pick';
 import Step3Forfeit from '../screens/NewChallenge/Step3Forfeit';
 import Step4Opponent from '../screens/NewChallenge/Step4Opponent';
+import AcceptPickScreen from '../screens/NewChallenge/AcceptPick';
+import MarkResultScreen from '../screens/NewChallenge/MarkResult';
 import { ChallengeProvider } from '../constants/challengeContext';
 import { supabase } from '../constants/supabase';
 import colors from '../constants/colors';
@@ -67,6 +69,8 @@ function RootStack({ session }) {
             <Stack.Screen name="Step2Pick" component={Step2Pick} />
             <Stack.Screen name="Step3Forfeit" component={Step3Forfeit} />
             <Stack.Screen name="Step4Opponent" component={Step4Opponent} />
+            <Stack.Screen name="AcceptPick" component={AcceptPickScreen} />
+            <Stack.Screen name="MarkResult" component={MarkResultScreen} />
           </>
         ) : (
           <>
