@@ -153,6 +153,13 @@ export default function HomeScreen({ navigation }) {
             onPress={() => navigation.navigate('Notifications')}
           >
             <Text style={styles.notifIcon}>🔔</Text>
+            {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -247,6 +254,8 @@ const styles = StyleSheet.create({
   username: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
   notifBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   notifIcon: { fontSize: 20 },
+  badge: { position: 'absolute', top: 2, right: 2, backgroundColor: '#EF4444', borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: colors.background },
+  badgeText: { color: colors.white, fontSize: 10, fontWeight: 'bold' },
 
   statsBar: { flexDirection: 'row', marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: colors.border },
   statItem: { flex: 1, alignItems: 'center' },

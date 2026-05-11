@@ -7,7 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import colors from '../../constants/colors';
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState({ won: 0, lost: 0, pending: 0, total: 0 });
   const [loading, setLoading] = useState(true);
@@ -139,6 +139,21 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Quick Links */}
+        <View style={styles.quickLinks}>
+          <TouchableOpacity style={styles.quickLink} onPress={() => navigation.navigate('Friends')}>
+            <Text style={styles.quickLinkEmoji}>👥</Text>
+            <Text style={styles.quickLinkText}>Friends</Text>
+            <Text style={styles.quickLinkArrow}>›</Text>
+          </TouchableOpacity>
+          <View style={styles.quickLinkDivider} />
+          <TouchableOpacity style={styles.quickLink} onPress={() => navigation.navigate('Settings')}>
+            <Text style={styles.quickLinkEmoji}>⚙️</Text>
+            <Text style={styles.quickLinkText}>Settings</Text>
+            <Text style={styles.quickLinkArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Log Out */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
@@ -183,6 +198,12 @@ const styles = StyleSheet.create({
   infoValue: { color: colors.white, fontSize: 14, fontWeight: '500' },
   divider: { height: 1, backgroundColor: colors.border },
 
+  quickLinks: { marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 16, overflow: 'hidden' },
+  quickLink: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+  quickLinkEmoji: { fontSize: 18, marginRight: 12 },
+  quickLinkText: { flex: 1, color: colors.white, fontSize: 15, fontWeight: '500' },
+  quickLinkArrow: { color: colors.textSecondary, fontSize: 20 },
+  quickLinkDivider: { height: 1, backgroundColor: colors.border, marginHorizontal: 16 },
   logoutBtn: { marginHorizontal: 20, backgroundColor: '#EF444420', borderWidth: 1, borderColor: '#EF4444', borderRadius: 12, padding: 16, alignItems: 'center' },
   logoutText: { color: '#EF4444', fontWeight: 'bold', fontSize: 16 },
 });
