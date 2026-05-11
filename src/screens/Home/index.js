@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, ActivityIndicator, RefreshControl,
+  ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import { getUpcomingMatches, LEAGUES } from '../../constants/api';
 import { useChallenge } from '../../constants/challengeContext';
@@ -13,6 +14,30 @@ function formatDate(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function ActiveChallengeCard({ item, currentUserId, onPress }) {
+  const isReceived = item.opponent_id === currentUserId;
+  const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
+  const statusColor = item.status === 'accepted' ? '#10B981' : '#F59E0B';
+  const statusLabel = item.status === 'accepted' ? 'Active' : 'Pending';
+
+  return (
+    <TouchableOpacity style={styles.activeChallengeCard} onPress={onPress} activeOpacity={0.8}>
+      <View style={styles.acTop}>
+        <Text style={styles.acOpponent}>
+          {isReceived ? `⚔️ vs @${otherUser}` : `📤 @${otherUser}`}
+        </Text>
+        <View style={[styles.acBadge, { borderColor: statusColor, backgroundColor: statusColor + '22' }]}>
+          <Text style={[styles.acBadgeText, { color: statusColor }]}>{statusLabel}</Text>
+        </View>
+      </View>
+      <Text style={styles.acMatch} numberOfLines={1}>
+        {item.match_home_team} vs {item.match_away_team}
+      </Text>
+      <Text style={styles.acForfeit} numberOfLines={1}>🏃 Forfeit: {item.forfeit}</Text>
+    </TouchableOpacity>
+  );
 }
 
 function MatchCard({ match, onChallenge }) {
@@ -35,30 +60,63 @@ function MatchCard({ match, onChallenge }) {
 export default function HomeScreen({ navigation }) {
   const { updateChallenge } = useChallenge();
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [activeChallenges, setActiveChallenges] = useState([]);
   const [matches, setMatches] = useState([]);
   const [selectedLeague, setSelectedLeague] = useState(LEAGUES[0]);
-  const [loading, setLoading] = useState(true);
+  const [loadingMatches, setLoadingMatches] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData();
+    }, [])
+  );
+
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
     loadMatches();
   }, []);
 
+  async function loadUserData() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setUser(user);
+
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('username, points')
+      .eq('id', user.id)
+      .single();
+    if (profileData) setProfile(profileData);
+
+    const { data: challenges } = await supabase
+      .from('challenges')
+      .select(`
+        *,
+        challenger:profiles!challenges_challenger_id_fkey(username),
+        opponent:profiles!challenges_opponent_id_fkey(username)
+      `)
+      .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
+      .in('status', ['pending', 'accepted'])
+      .order('created_at', { ascending: false });
+
+    setActiveChallenges(challenges || []);
+  }
+
   async function loadMatches(league = selectedLeague) {
-    setLoading(true);
+    setLoadingMatches(true);
     try {
       const data = await getUpcomingMatches(league.id);
       setMatches(data.slice(0, 10));
     } catch (e) {
       setMatches([]);
     }
-    setLoading(false);
+    setLoadingMatches(false);
   }
 
   async function onRefresh() {
     setRefreshing(true);
-    await loadMatches();
+    await Promise.all([loadUserData(), loadMatches()]);
     setRefreshing(false);
   }
 
@@ -67,7 +125,11 @@ export default function HomeScreen({ navigation }) {
     await loadMatches(league);
   }
 
-  const username = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Player';
+  const username = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Player';
+
+  const won = 0; // будет реализовано когато имаме completed challenges
+  const lost = 0;
+  const winRate = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -97,10 +159,10 @@ export default function HomeScreen({ navigation }) {
         {/* Stats Bar */}
         <View style={styles.statsBar}>
           {[
-            { label: 'Points', value: '0' },
-            { label: 'Won', value: '0' },
-            { label: 'Lost', value: '0' },
-            { label: 'Win Rate', value: '-%' },
+            { label: 'Points', value: profile?.points ?? 0 },
+            { label: 'Won', value: won },
+            { label: 'Lost', value: lost },
+            { label: 'Win Rate', value: `${winRate}%` },
           ].map((s) => (
             <View key={s.label} style={styles.statItem}>
               <Text style={styles.statValue}>{s.value}</Text>
@@ -113,19 +175,35 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>⚔️ Active Challenges</Text>
+            {activeChallenges.length > 0 && (
+              <TouchableOpacity onPress={() => navigation.navigate('Challenges')}>
+                <Text style={styles.seeAll}>See all →</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyEmoji}>🏆</Text>
-            <Text style={styles.emptyText}>No active challenges yet</Text>
-            <Text style={styles.emptySubtext}>Pick a match below and challenge a friend!</Text>
-          </View>
+
+          {activeChallenges.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyEmoji}>🏆</Text>
+              <Text style={styles.emptyText}>No active challenges yet</Text>
+              <Text style={styles.emptySubtext}>Pick a match below and challenge a friend!</Text>
+            </View>
+          ) : (
+            activeChallenges.slice(0, 3).map(item => (
+              <ActiveChallengeCard
+                key={item.id}
+                item={item}
+                currentUserId={user?.id}
+                onPress={() => navigation.navigate('Challenges')}
+              />
+            ))
+          )}
         </View>
 
         {/* Upcoming Matches */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📅 Upcoming Matches</Text>
 
-          {/* League Filter */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.leagueScroll}>
             {LEAGUES.map((l) => (
               <TouchableOpacity
@@ -138,7 +216,7 @@ export default function HomeScreen({ navigation }) {
             ))}
           </ScrollView>
 
-          {loading ? (
+          {loadingMatches ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
           ) : matches.length === 0 ? (
             <View style={styles.emptyCard}>
@@ -169,21 +247,35 @@ const styles = StyleSheet.create({
   username: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
   notifBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   notifIcon: { fontSize: 20 },
+
   statsBar: { flexDirection: 'row', marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: colors.border },
   statItem: { flex: 1, alignItems: 'center' },
   statValue: { color: colors.primary, fontWeight: 'bold', fontSize: 18 },
   statLabel: { color: colors.textSecondary, fontSize: 11, marginTop: 2 },
+
   section: { marginBottom: 24, paddingHorizontal: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { color: colors.white, fontWeight: 'bold', fontSize: 16, marginBottom: 12 },
+  seeAll: { color: colors.primary, fontSize: 13, fontWeight: '600', marginBottom: 12 },
+
+  activeChallengeCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: colors.border },
+  acTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  acOpponent: { color: colors.white, fontWeight: '700', fontSize: 14 },
+  acBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
+  acBadgeText: { fontSize: 11, fontWeight: '700' },
+  acMatch: { color: colors.textSecondary, fontSize: 12, marginBottom: 4 },
+  acForfeit: { color: colors.textSecondary, fontSize: 12 },
+
   emptyCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   emptyEmoji: { fontSize: 36, marginBottom: 8 },
   emptyText: { color: colors.white, fontWeight: '600', fontSize: 14, marginBottom: 4 },
   emptySubtext: { color: colors.textSecondary, fontSize: 12, textAlign: 'center' },
+
   leagueScroll: { marginBottom: 16, marginHorizontal: -20, paddingHorizontal: 20 },
   leagueChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.surface, marginRight: 8, borderWidth: 1, borderColor: colors.border },
   leagueChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   leagueChipText: { color: colors.white, fontSize: 13, fontWeight: '500' },
+
   matchCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
   matchLeague: { color: colors.textSecondary, fontSize: 11, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   matchTeams: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
