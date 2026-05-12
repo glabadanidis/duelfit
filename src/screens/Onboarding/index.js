@@ -26,23 +26,28 @@ const slides = [
   },
 ];
 
-export default function OnboardingScreen({ navigation }) {
+export default function OnboardingScreen({ navigation, onDone }) {
   const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef(null);
+
+  async function finish(goToRegister = true) {
+    await onDone?.();
+    navigation.replace(goToRegister ? 'Register' : 'Login');
+  }
 
   function goNext() {
     if (currentIndex < slides.length - 1) {
       flatListRef.current.scrollToIndex({ index: currentIndex + 1 });
       setCurrentIndex(currentIndex + 1);
     } else {
-      navigation.replace('Register');
+      finish(true);
     }
   }
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.skip} onPress={() => navigation.replace('Login')}>
+      <TouchableOpacity style={styles.skip} onPress={() => finish(false)}>
         <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
 
@@ -78,7 +83,7 @@ export default function OnboardingScreen({ navigation }) {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.loginButton} onPress={() => navigation.replace('Login')}>
+      <TouchableOpacity style={styles.loginButton} onPress={() => finish(false)}>
         <Text style={styles.loginText}>
           Already have an account? <Text style={styles.loginBold}>Log in</Text>
         </Text>

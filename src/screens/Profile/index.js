@@ -38,10 +38,9 @@ export default function ProfileScreen({ navigation }) {
 
     if (challenges) {
       const total = challenges.length;
-      const won = challenges.filter(c => c.winner_id === user.id).length;
-      const lost = challenges.filter(
-        c => c.status === 'completed' && c.winner_id && c.winner_id !== user.id
-      ).length;
+      const completed = challenges.filter(c => c.status === 'completed');
+      const won = completed.filter(c => c.winner_id === user.id).length;
+      const lost = completed.filter(c => c.winner_id && c.winner_id !== user.id).length;
       const pending = challenges.filter(c => c.status === 'pending' || c.status === 'accepted').length;
       setStats({ won, lost, pending, total });
     }

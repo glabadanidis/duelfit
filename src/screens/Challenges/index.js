@@ -24,13 +24,13 @@ function statusBadge(status) {
   return map[status] || { label: status, color: colors.textSecondary };
 }
 
-function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult, navigation }) {
+function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
   const badge = statusBadge(item.status);
   const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       {/* Top row */}
       <View style={styles.cardTop}>
         <View style={styles.avatarSmall}>
@@ -88,7 +88,7 @@ function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult,
           <Text style={styles.markResultBtnText}>🏁  Mark Result</Text>
         </TouchableOpacity>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -214,6 +214,7 @@ export default function ChallengesScreen({ navigation }) {
               onAccept={handleAccept}
               onDecline={handleDecline}
               onMarkResult={handleMarkResult}
+              onPress={() => navigation.navigate('ChallengeDetail', { challenge: item, currentUserId: userId })}
             />
           )}
         />

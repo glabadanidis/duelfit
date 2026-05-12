@@ -64,6 +64,7 @@ export default function HomeScreen({ navigation }) {
   const [activeChallenges, setActiveChallenges] = useState([]);
   const [matches, setMatches] = useState([]);
   const [selectedLeague, setSelectedLeague] = useState(LEAGUES[0]);
+  const [wonLost, setWonLost] = useState({ won: 0, lost: 0 });
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -97,10 +98,15 @@ export default function HomeScreen({ navigation }) {
         opponent:profiles!challenges_opponent_id_fkey(username)
       `)
       .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
-      .in('status', ['pending', 'accepted'])
       .order('created_at', { ascending: false });
 
-    setActiveChallenges(challenges || []);
+    const all = challenges || [];
+    setActiveChallenges(all.filter(c => c.status === 'pending' || c.status === 'accepted'));
+
+    const completed = all.filter(c => c.status === 'completed');
+    const wonCount  = completed.filter(c => c.winner_id === user.id).length;
+    const lostCount = completed.filter(c => c.winner_id && c.winner_id !== user.id).length;
+    setWonLost({ won: wonCount, lost: lostCount });
   }
 
   async function loadMatches(league = selectedLeague) {
@@ -127,8 +133,7 @@ export default function HomeScreen({ navigation }) {
 
   const username = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Player';
 
-  const won = 0; // будет реализовано когато имаме completed challenges
-  const lost = 0;
+  const { won, lost } = wonLost;
   const winRate = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
 
   return (

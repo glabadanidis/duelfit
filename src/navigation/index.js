@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -20,6 +21,7 @@ import AcceptPickScreen from '../screens/NewChallenge/AcceptPick';
 import MarkResultScreen from '../screens/NewChallenge/MarkResult';
 import FriendsScreen from '../screens/Friends';
 import SettingsScreen from '../screens/Settings';
+import ChallengeDetailScreen from '../screens/Challenges/Detail';
 import { ChallengeProvider } from '../constants/challengeContext';
 import { supabase } from '../constants/supabase';
 import colors from '../constants/colors';
@@ -59,7 +61,12 @@ function MainTabs({ navigation }) {
   );
 }
 
-function RootStack({ session }) {
+function RootStack({ session, onboardingDone, setOnboardingDone }) {
+  async function markOnboardingDone() {
+    await AsyncStorage.setItem('onboarding_done', 'true');
+    setOnboardingDone(true);
+  }
+
   return (
     <ChallengeProvider>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -75,10 +82,15 @@ function RootStack({ session }) {
             <Stack.Screen name="MarkResult" component={MarkResultScreen} />
             <Stack.Screen name="Friends" component={FriendsScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="ChallengeDetail" component={ChallengeDetailScreen} />
           </>
         ) : (
           <>
-            <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+            {!onboardingDone && (
+              <Stack.Screen name="Onboarding">
+                {props => <OnboardingScreen {...props} onDone={markOnboardingDone} />}
+              </Stack.Screen>
+            )}
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
           </>
@@ -91,12 +103,17 @@ function RootStack({ session }) {
 export default function Navigation() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [onboardingDone, setOnboardingDone] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    async function init() {
+      const seen = await AsyncStorage.getItem('onboarding_done');
+      if (seen) setOnboardingDone(true);
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setLoading(false);
-    });
+    }
+    init();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
@@ -113,7 +130,7 @@ export default function Navigation() {
 
   return (
     <NavigationContainer>
-      <RootStack session={session} />
+      <RootStack session={session} onboardingDone={onboardingDone} setOnboardingDone={setOnboardingDone} />
     </NavigationContainer>
   );
 }
