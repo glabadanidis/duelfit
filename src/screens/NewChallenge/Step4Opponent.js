@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../constants/supabase';
 import { useChallenge } from '../../constants/challengeContext';
+import { notifyChallengeSent } from '../../constants/notifications';
 import colors from '../../constants/colors';
 
 export default function Step4Opponent({ navigation }) {
@@ -47,6 +48,11 @@ export default function Step4Opponent({ navigation }) {
     });
     setSending(false);
     if (error) return Alert.alert('Error', error.message);
+
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const { data: profile } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single();
+    notifyChallengeSent(opponent.id, profile?.username || 'Someone', `${match.strHomeTeam} vs ${match.strAwayTeam}`);
+
     resetChallenge();
     Alert.alert('Challenge Sent! ⚔️', `Your challenge has been sent to @${opponent.username}!`, [
       { text: 'OK', onPress: () => navigation.navigate('Main') },

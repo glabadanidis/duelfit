@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../constants/supabase';
+import { notifyChallengeAccepted } from '../../constants/notifications';
 import colors from '../../constants/colors';
 
 export default function AcceptPickScreen({ route, navigation }) {
@@ -24,6 +25,11 @@ export default function AcceptPickScreen({ route, navigation }) {
       .eq('id', challenge.id);
     setLoading(false);
     if (error) return Alert.alert('Error', error.message);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
+    notifyChallengeAccepted(challenge.challenger_id, profile?.username || 'Someone');
+
     Alert.alert('Challenge Accepted! ⚔️', `You picked: ${selected}\nMay the best prediction win!`, [
       { text: 'OK', onPress: () => navigation.navigate('Main') },
     ]);
