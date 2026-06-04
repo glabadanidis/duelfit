@@ -13,6 +13,7 @@ import NotificationsScreen from '../screens/Notifications';
 import OnboardingScreen from '../screens/Onboarding';
 import LoginScreen from '../screens/Auth/Login';
 import RegisterScreen from '../screens/Auth/Register';
+import ForgotPasswordScreen from '../screens/Auth/ForgotPassword';
 import Step1Match from '../screens/NewChallenge/Step1Match';
 import Step2Pick from '../screens/NewChallenge/Step2Pick';
 import Step3Forfeit from '../screens/NewChallenge/Step3Forfeit';
@@ -93,6 +94,7 @@ function RootStack({ session, onboardingDone, setOnboardingDone }) {
             )}
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         )}
       </Stack.Navigator>
@@ -100,7 +102,7 @@ function RootStack({ session, onboardingDone, setOnboardingDone }) {
   );
 }
 
-export default function Navigation() {
+export default function Navigation({ navigationRef }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [onboardingDone, setOnboardingDone] = useState(false);
@@ -129,7 +131,7 @@ export default function Navigation() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <RootStack session={session} onboardingDone={onboardingDone} setOnboardingDone={setOnboardingDone} />
     </NavigationContainer>
   );

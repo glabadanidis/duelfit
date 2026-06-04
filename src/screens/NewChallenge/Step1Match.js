@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, TextInput,
+  ActivityIndicator, TextInput, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUpcomingMatches, LEAGUES } from '../../constants/api';
+import { getUpcomingMatches, LEAGUES, getF1RaceFlag, getTeamFlag } from '../../constants/api';
 import { useChallenge } from '../../constants/challengeContext';
 import colors from '../../constants/colors';
 
@@ -72,7 +72,11 @@ export default function Step1Match({ navigation }) {
             style={[styles.chip, selectedLeague.id === l.id && styles.chipActive]}
             onPress={() => selectLeague(l)}
           >
-            <Text style={styles.chipText}>{l.emoji} {l.name}</Text>
+            {l.logo
+              ? <Image source={{ uri: l.logo }} style={styles.chipLogo} />
+              : <Text style={styles.chipEmoji}>{l.emoji} </Text>
+            }
+            <Text style={styles.chipText}>{l.name}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -84,12 +88,30 @@ export default function Step1Match({ navigation }) {
           {filtered.map(match => (
             <TouchableOpacity key={match.idEvent} style={styles.matchCard} onPress={() => selectMatch(match)}>
               <Text style={styles.league}>{match.strLeague}</Text>
-              <View style={styles.teams}>
-                <Text style={styles.team} numberOfLines={1}>{match.strHomeTeam}</Text>
-                <Text style={styles.vs}>VS</Text>
-                <Text style={styles.team} numberOfLines={1}>{match.strAwayTeam}</Text>
-              </View>
-              <Text style={styles.date}>{formatDate(match.dateEvent)} · {match.strTime?.slice(0,5) || 'TBD'}</Text>
+              {match.strHomeTeam ? (
+                <View style={styles.teams}>
+                  <View style={styles.teamBlock}>
+                    {getTeamFlag(match.strHomeTeam)
+                      ? <Text style={styles.teamFlag}>{getTeamFlag(match.strHomeTeam)}</Text>
+                      : match.strHomeTeamBadge
+                        ? <Image source={{ uri: match.strHomeTeamBadge }} style={styles.teamBadge} resizeMode="contain" />
+                        : null}
+                    <Text style={styles.team} numberOfLines={1}>{match.strHomeTeam}</Text>
+                  </View>
+                  <Text style={styles.vs}>VS</Text>
+                  <View style={styles.teamBlock}>
+                    {getTeamFlag(match.strAwayTeam)
+                      ? <Text style={styles.teamFlag}>{getTeamFlag(match.strAwayTeam)}</Text>
+                      : match.strAwayTeamBadge
+                        ? <Image source={{ uri: match.strAwayTeamBadge }} style={styles.teamBadge} resizeMode="contain" />
+                        : null}
+                    <Text style={styles.team} numberOfLines={1}>{match.strAwayTeam}</Text>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.raceName} numberOfLines={1}>{getF1RaceFlag(match.strEvent)} {match.strEvent}</Text>
+              )}
+              <Text style={styles.date}>📅 {formatDate(match.dateEvent)} · {match.strTime?.slice(0,5) || 'TBD'}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -106,14 +128,20 @@ const styles = StyleSheet.create({
   step: { color: colors.textSecondary, fontSize: 13 },
   search: { marginHorizontal: 20, marginBottom: 12, backgroundColor: colors.surface, borderRadius: 10, padding: 12, color: colors.white, borderWidth: 1, borderColor: colors.border },
   leagueScroll: { paddingHorizontal: 20, marginBottom: 16, maxHeight: 44 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.surface, marginRight: 8, borderWidth: 1, borderColor: colors.border },
+  chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.surface, marginRight: 8, borderWidth: 1, borderColor: colors.border },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipLogo: { width: 16, height: 16, marginRight: 5, resizeMode: 'contain' },
+  chipEmoji: { fontSize: 12 },
   chipText: { color: colors.white, fontSize: 12, fontWeight: '500' },
   list: { paddingHorizontal: 20 },
   matchCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border },
   league: { color: colors.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
   teams: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  team: { flex: 1, color: colors.white, fontWeight: 'bold', fontSize: 14, textAlign: 'center' },
+  teamBlock: { flex: 1, alignItems: 'center', gap: 4 },
+  teamBadge: { width: 36, height: 36 },
+  teamFlag: { fontSize: 32 },
+  team: { color: colors.white, fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
   vs: { color: colors.primary, fontWeight: 'bold', fontSize: 11, marginHorizontal: 6 },
   date: { color: colors.textSecondary, fontSize: 12, textAlign: 'center' },
+  raceName: { color: colors.white, fontWeight: 'bold', fontSize: 14, textAlign: 'center', marginBottom: 6 },
 });

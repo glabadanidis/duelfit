@@ -69,18 +69,25 @@ export async function sendPushNotification(expoPushToken, title, body) {
   });
 }
 
-export async function notifyChallengeSent(opponentId, challengerUsername, matchName) {
+export async function notifyChallengeSent(opponentId, challengerUsername, matchName, challengeId) {
   const { data } = await supabase
     .from('profiles')
     .select('push_token')
     .eq('id', opponentId)
     .single();
 
-  await sendPushNotification(
-    data?.push_token,
-    '⚔️ New Challenge!',
-    `@${challengerUsername} challenged you on ${matchName}`
-  );
+  if (!data?.push_token) return;
+  await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: data.push_token,
+      title: '⚔️ New Challenge!',
+      body: `@${challengerUsername} challenged you on ${matchName}`,
+      sound: 'default',
+      data: { challengeId },
+    }),
+  });
 }
 
 export async function notifyChallengeAccepted(challengerId, opponentUsername) {

@@ -34,7 +34,7 @@ export default function LoginScreen({ navigation }) {
         {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Log In</Text>}
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.forgotButton}>
+      <TouchableOpacity style={styles.forgotButton} onPress={() => navigation.navigate('ForgotPassword')}>
         <Text style={styles.forgot}>Forgot Password?</Text>
       </TouchableOpacity>
 

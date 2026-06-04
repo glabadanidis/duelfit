@@ -4,6 +4,7 @@ import {
   ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import colors from '../../constants/colors';
 
@@ -22,6 +23,7 @@ function notifFromChallenge(challenge, currentUserId) {
 
   if (challenge.status === 'pending' && isOpponent) {
     return {
+      id: challenge.id,
       emoji: '⚔️',
       title: `@${other} challenged you!`,
       body: `${challenge.match_home_team} vs ${challenge.match_away_team}`,
@@ -32,6 +34,7 @@ function notifFromChallenge(challenge, currentUserId) {
   }
   if (challenge.status === 'accepted' && isChallenger) {
     return {
+      id: challenge.id,
       emoji: '✅',
       title: `@${other} accepted your challenge!`,
       body: `${challenge.match_home_team} vs ${challenge.match_away_team}`,
@@ -42,6 +45,7 @@ function notifFromChallenge(challenge, currentUserId) {
   }
   if (challenge.status === 'declined' && isChallenger) {
     return {
+      id: challenge.id,
       emoji: '❌',
       title: `@${other} declined your challenge`,
       body: `${challenge.match_home_team} vs ${challenge.match_away_team}`,
@@ -53,7 +57,8 @@ function notifFromChallenge(challenge, currentUserId) {
   if (challenge.status === 'completed') {
     const won = challenge.winner_id === currentUserId;
     return {
-      emoji: won ? '🏆' : '💪',
+      id: challenge.id,
+      emoji: won ? '🏆' : '👎',
       title: won ? 'You won the challenge!' : 'You lost the challenge',
       body: `${challenge.match_home_team} vs ${challenge.match_away_team}`,
       sub: won ? 'Points added to your profile' : `Forfeit: ${challenge.forfeit}`,
@@ -64,9 +69,13 @@ function notifFromChallenge(challenge, currentUserId) {
   return null;
 }
 
-function NotifCard({ notif }) {
+function NotifCard({ notif, onPress }) {
   return (
-    <View style={[styles.card, { borderLeftColor: notif.color, borderLeftWidth: 3 }]}>
+    <TouchableOpacity
+      style={[styles.card, { borderLeftColor: notif.color, borderLeftWidth: 3 }]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
       <View style={styles.cardLeft}>
         <Text style={styles.emoji}>{notif.emoji}</Text>
       </View>
@@ -76,7 +85,7 @@ function NotifCard({ notif }) {
         <Text style={styles.sub}>{notif.sub}</Text>
       </View>
       <Text style={styles.time}>{timeAgo(notif.time)}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -85,9 +94,11 @@ export default function NotificationsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadNotifications();
+    }, [])
+  );
 
   async function loadNotifications() {
     setLoading(true);
@@ -147,7 +158,12 @@ export default function NotificationsScreen({ navigation }) {
               <Text style={styles.emptySubtext}>Challenge someone to get started!</Text>
             </View>
           }
-          renderItem={({ item }) => <NotifCard notif={item} />}
+          renderItem={({ item }) => (
+            <NotifCard
+              notif={item}
+              onPress={() => item.id && navigation.navigate('ChallengeDetail', { challengeId: item.id })}
+            />
+          )}
         />
       )}
     </SafeAreaView>

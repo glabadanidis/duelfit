@@ -1,19 +1,25 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../constants/supabase';
 import { notifyChallengeAccepted } from '../../constants/notifications';
+import { F1_DRIVERS, getTeamFlag } from '../../constants/api';
 import colors from '../../constants/colors';
+
+const F1_LEAGUE_ID = 4370;
 
 export default function AcceptPickScreen({ route, navigation }) {
   const { challenge } = route.params;
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const isF1 = Number(challenge.match_id?.toString().length) > 0 &&
+    challenge.match_league?.toLowerCase().includes('formula');
+
   const options = [
-    { value: challenge.match_home_team, emoji: '🏠', label: 'Home Win' },
+    { value: challenge.match_home_team, emoji: getTeamFlag(challenge.match_home_team) || '🏠', label: 'Home Win' },
     { value: 'Draw',                    emoji: '🤝', label: 'Draw'     },
-    { value: challenge.match_away_team, emoji: '✈️', label: 'Away Win' },
+    { value: challenge.match_away_team, emoji: getTeamFlag(challenge.match_away_team) || '✈️', label: 'Away Win' },
   ];
 
   async function confirmAccept() {
@@ -64,28 +70,51 @@ export default function AcceptPickScreen({ route, navigation }) {
         </View>
       </View>
 
-      <Text style={styles.question}>Now pick YOUR side:</Text>
+      <Text style={styles.question}>
+        {isF1 ? 'Who will win the race?' : 'Now pick YOUR side:'}
+      </Text>
 
-      <View style={styles.options}>
-        {options.map(opt => (
-          <TouchableOpacity
-            key={opt.value}
-            style={[
-              styles.pickCard,
-              selected === opt.value && styles.pickCardActive,
-              opt.value === challenge.challenger_pick && styles.pickCardTaken,
-            ]}
-            onPress={() => setSelected(opt.value)}
-          >
-            <Text style={styles.pickEmoji}>{opt.emoji}</Text>
-            <Text style={styles.pickTeam} numberOfLines={2}>{opt.value}</Text>
-            <Text style={styles.pickLabel}>{opt.label}</Text>
-            {opt.value === challenge.challenger_pick && (
-              <Text style={styles.takenLabel}>Opponent's pick</Text>
-            )}
-          </TouchableOpacity>
-        ))}
-      </View>
+      {isF1 ? (
+        <ScrollView style={styles.driverList} showsVerticalScrollIndicator={false}>
+          {F1_DRIVERS.filter(d => d !== challenge.challenger_pick).map(driver => (
+            <TouchableOpacity
+              key={driver}
+              style={[styles.driverRow, selected === driver && styles.driverRowActive]}
+              onPress={() => setSelected(driver)}
+            >
+              <Text style={styles.driverEmoji}>🏎️</Text>
+              <Text style={[styles.driverName, selected === driver && styles.driverNameActive]}>
+                {driver}
+              </Text>
+              {selected === driver && <Text style={styles.driverCheck}>✓</Text>}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : (
+        <View style={styles.options}>
+          {options.map(opt => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[
+                styles.pickCard,
+                selected === opt.value && styles.pickCardActive,
+                opt.value === challenge.challenger_pick && styles.pickCardTaken,
+              ]}
+              onPress={() => {
+                if (opt.value === challenge.challenger_pick) return;
+                setSelected(opt.value);
+              }}
+            >
+              <Text style={styles.pickEmoji}>{opt.emoji}</Text>
+              <Text style={styles.pickTeam} numberOfLines={2}>{opt.value}</Text>
+              <Text style={styles.pickLabel}>{opt.label}</Text>
+              {opt.value === challenge.challenger_pick && (
+                <Text style={styles.takenLabel}>Opponent's pick</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <TouchableOpacity
         style={[styles.acceptBtn, !selected && styles.acceptBtnDisabled]}
@@ -119,6 +148,13 @@ const styles = StyleSheet.create({
 
   question: { color: colors.white, fontWeight: 'bold', fontSize: 18, textAlign: 'center', marginBottom: 16, paddingHorizontal: 20 },
 
+  driverList: { flex: 1, paddingHorizontal: 20, marginBottom: 8 },
+  driverRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: colors.border, gap: 12 },
+  driverRowActive: { borderColor: '#10B981', backgroundColor: '#10B98115' },
+  driverEmoji: { fontSize: 20 },
+  driverName: { flex: 1, color: colors.white, fontWeight: '600', fontSize: 14 },
+  driverNameActive: { color: '#10B981' },
+  driverCheck: { color: '#10B981', fontWeight: 'bold', fontSize: 16 },
   options: { flexDirection: 'row', paddingHorizontal: 20, gap: 8, marginBottom: 24 },
   pickCard: { flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   pickCardActive: { borderColor: '#10B981', backgroundColor: '#10B98115' },

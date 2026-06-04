@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
+  View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -50,23 +50,61 @@ export default function LeaderboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserRank, setCurrentUserRank] = useState(null);
+  const [period, setPeriod] = useState('alltime'); // 'alltime' | 'monthly'
 
   useFocusEffect(
     useCallback(() => {
-      loadLeaderboard();
-    }, [])
+      loadLeaderboard(period);
+    }, [period])
   );
 
-  async function loadLeaderboard() {
+  async function loadLeaderboard(p = period) {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setCurrentUserId(user.id);
 
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, username, full_name, points')
-      .order('points', { ascending: false })
-      .limit(50);
+    let data;
+
+    if (p === 'alltime') {
+      const res = await supabase
+        .from('profiles')
+        .select('id, username, full_name, points')
+        .order('points', { ascending: false })
+        .limit(50);
+      data = res.data;
+    } else {
+      // Monthly: count wins from challenges completed this calendar month
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+      const { data: wins } = await supabase
+        .from('challenges')
+        .select('winner_id')
+        .eq('status', 'completed')
+        .not('winner_id', 'is', null)
+        .gte('updated_at', monthStart);
+
+      // Tally wins per user
+      const tally = {};
+      (wins || []).forEach(c => {
+        tally[c.winner_id] = (tally[c.winner_id] || 0) + 1;
+      });
+
+      if (Object.keys(tally).length === 0) {
+        data = [];
+      } else {
+        const ids = Object.keys(tally);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, username, full_name')
+          .in('id', ids);
+
+        data = (profiles || [])
+          .map(p => ({ ...p, points: tally[p.id] || 0 }))
+          .sort((a, b) => b.points - a.points)
+          .slice(0, 50);
+      }
+    }
 
     if (data) {
       setPlayers(data);
@@ -78,14 +116,20 @@ export default function LeaderboardScreen() {
     setLoading(false);
   }
 
+  function switchPeriod(p) {
+    setPeriod(p);
+  }
+
   async function onRefresh() {
     setRefreshing(true);
-    await loadLeaderboard();
+    await loadLeaderboard(period);
     setRefreshing(false);
   }
 
   const top3 = players.slice(0, 3);
   const rest = players.slice(3);
+
+  const monthName = new Date().toLocaleString('en-GB', { month: 'long' });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -96,6 +140,21 @@ export default function LeaderboardScreen() {
             <Text style={styles.myRankText}>Your rank: #{currentUserRank}</Text>
           </View>
         )}
+      </View>
+
+      <View style={styles.periodTabs}>
+        <TouchableOpacity
+          style={[styles.periodTab, period === 'alltime' && styles.periodTabActive]}
+          onPress={() => switchPeriod('alltime')}
+        >
+          <Text style={[styles.periodTabText, period === 'alltime' && styles.periodTabTextActive]}>All Time</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.periodTab, period === 'monthly' && styles.periodTabActive]}
+          onPress={() => switchPeriod('monthly')}
+        >
+          <Text style={[styles.periodTabText, period === 'monthly' && styles.periodTabTextActive]}>{monthName}</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -176,6 +235,12 @@ const styles = StyleSheet.create({
   headerTitle: { color: colors.white, fontSize: 24, fontWeight: 'bold' },
   myRankBadge: { backgroundColor: colors.primary + '22', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: colors.primary },
   myRankText: { color: colors.primary, fontWeight: '700', fontSize: 12 },
+
+  periodTabs: { flexDirection: 'row', marginHorizontal: 20, marginBottom: 16, backgroundColor: colors.surface, borderRadius: 12, padding: 4, borderWidth: 1, borderColor: colors.border },
+  periodTab: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 10 },
+  periodTabActive: { backgroundColor: colors.primary },
+  periodTabText: { color: colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  periodTabTextActive: { color: colors.white },
 
   podium: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 20, marginBottom: 24, gap: 8 },
   podiumItem: { flex: 1, alignItems: 'center' },

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "duelfit",
+    "name": "DuelFit",
     "slug": "duelfit",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,8 +13,9 @@
       "backgroundColor": "#121212"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.duelfit.app"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.duelfit.app",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +23,8 @@
         "backgroundColor": "#121212"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.duelfit.app"
+      "package": "com.duelfit.app",
+      "versionCode": 1
     },
     "plugins": [
       [
@@ -35,6 +37,12 @@
     ],
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b735e07d-b072-45f8-815d-b4aa294a2852"
+      }
+    },
+    "owner": "glabadanidis"
   }
 }

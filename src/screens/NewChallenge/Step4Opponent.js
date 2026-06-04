@@ -34,24 +34,26 @@ export default function Step4Opponent({ navigation }) {
     if (!opponent) return Alert.alert('Error', 'Please select an opponent.');
     setSending(true);
     const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from('challenges').insert({
+    const { data: inserted, error } = await supabase.from('challenges').insert({
       challenger_id: user.id,
       opponent_id: opponent.id,
       match_id: match.idEvent,
-      match_home_team: match.strHomeTeam,
-      match_away_team: match.strAwayTeam,
+      match_home_team: match.strHomeTeam || match.strEvent || 'F1 Race',
+      match_away_team: match.strAwayTeam || 'F1 Race',
       match_date: match.dateEvent,
       match_league: match.strLeague,
       challenger_pick: pick,
       forfeit,
       status: 'pending',
-    });
+    }).select('id').single();
     setSending(false);
     if (error) return Alert.alert('Error', error.message);
 
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
-    const { data: profile } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single();
-    notifyChallengeSent(opponent.id, profile?.username || 'Someone', `${match.strHomeTeam} vs ${match.strAwayTeam}`);
+    const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
+    const matchLabel = match.strHomeTeam && match.strAwayTeam
+      ? `${match.strHomeTeam} vs ${match.strAwayTeam}`
+      : match.strEvent || 'F1 Race';
+    notifyChallengeSent(opponent.id, profile?.username || 'Someone', matchLabel, inserted?.id);
 
     resetChallenge();
     Alert.alert('Challenge Sent! ⚔️', `Your challenge has been sent to @${opponent.username}!`, [
@@ -75,7 +77,11 @@ export default function Step4Opponent({ navigation }) {
           <Text style={styles.summaryTitle}>Challenge Summary</Text>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Match</Text>
-            <Text style={styles.summaryValue}>{match?.strHomeTeam} vs {match?.strAwayTeam}</Text>
+            <Text style={styles.summaryValue}>
+              {match?.strHomeTeam && match?.strAwayTeam
+                ? `${match.strHomeTeam} vs ${match.strAwayTeam}`
+                : match?.strEvent || 'F1 Race'}
+            </Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Your pick</Text>

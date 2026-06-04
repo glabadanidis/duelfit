@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, Alert, RefreshControl,
@@ -14,40 +14,31 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function statusBadge(status) {
-  const map = {
-    pending:  { label: 'Pending',   color: '#F59E0B' },
-    accepted: { label: 'Active',    color: '#10B981' },
-    declined: { label: 'Declined',  color: '#EF4444' },
-    completed:{ label: 'Completed', color: colors.textSecondary },
-  };
-  return map[status] || { label: status, color: colors.textSecondary };
-}
-
-function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult, onPress }) {
+function ActiveChallengeCard({ item, currentUserId, onAccept, onDecline, onCancel, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
-  const badge = statusBadge(item.status);
+  const isSent = item.challenger_id === currentUserId;
   const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
+  const isPending = item.status === 'pending';
+  const statusColor = isPending ? '#F59E0B' : '#10B981';
+  const statusLabel = isPending ? 'Pending' : 'Active';
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-      {/* Top row */}
       <View style={styles.cardTop}>
         <View style={styles.avatarSmall}>
           <Text style={styles.avatarSmallText}>{otherUser?.[0]?.toUpperCase() || '?'}</Text>
         </View>
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.cardTitle}>
-            {isReceived ? `⚔️ Challenge from @${otherUser}` : `📤 Sent to @${otherUser}`}
+            {isReceived ? `⚔️ vs @${otherUser}` : `📤 @${otherUser}`}
           </Text>
           <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: badge.color + '22', borderColor: badge.color }]}>
-          <Text style={[styles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+        <View style={[styles.badge, { backgroundColor: statusColor + '22', borderColor: statusColor }]}>
+          <Text style={[styles.badgeText, { color: statusColor }]}>{statusLabel}</Text>
         </View>
       </View>
 
-      {/* Match info */}
       <View style={styles.matchRow}>
         <Text style={styles.matchLeague}>{item.match_league}</Text>
         <View style={styles.matchTeams}>
@@ -57,7 +48,6 @@ function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult,
         </View>
       </View>
 
-      {/* Picks */}
       <View style={styles.picksRow}>
         <View style={styles.pickItem}>
           <Text style={styles.pickLabel}>Your pick</Text>
@@ -70,7 +60,6 @@ function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult,
         </View>
       </View>
 
-      {/* Accept / Decline for received pending challenges */}
       {isReceived && item.status === 'pending' && (
         <View style={styles.actions}>
           <TouchableOpacity style={styles.declineBtn} onPress={() => onDecline(item.id)}>
@@ -82,12 +71,60 @@ function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult,
         </View>
       )}
 
-      {/* Mark Result for accepted challenges */}
-      {item.status === 'accepted' && (
-        <TouchableOpacity style={styles.markResultBtn} onPress={() => onMarkResult(item)}>
-          <Text style={styles.markResultBtnText}>🏁  Mark Result</Text>
+      {isSent && item.status === 'pending' && (
+        <TouchableOpacity style={styles.cancelBtn} onPress={() => onCancel(item.id)}>
+          <Text style={styles.cancelBtnText}>✕  Cancel Challenge</Text>
         </TouchableOpacity>
       )}
+    </TouchableOpacity>
+  );
+}
+
+function CompletedChallengeCard({ item, currentUserId, onPress }) {
+  const isReceived = item.opponent_id === currentUserId;
+  const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
+  const isWon = item.winner_id === currentUserId;
+  const isLost = item.winner_id && item.winner_id !== currentUserId;
+  const resultColor = isWon ? '#10B981' : isLost ? '#EF4444' : colors.textSecondary;
+  const resultLabel = isWon ? '🏆 Won' : isLost ? '💔 Lost' : item.status === 'declined' ? '✕ Declined' : 'Draw';
+
+  return (
+    <TouchableOpacity style={[styles.card, styles.completedCard]} onPress={onPress} activeOpacity={0.85}>
+      <View style={styles.cardTop}>
+        <View style={[styles.avatarSmall, { backgroundColor: resultColor + '33' }]}>
+          <Text style={styles.avatarSmallText}>{otherUser?.[0]?.toUpperCase() || '?'}</Text>
+        </View>
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={styles.cardTitle}>
+            {isReceived ? `vs @${otherUser}` : `vs @${otherUser}`}
+          </Text>
+          <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
+        </View>
+        <View style={[styles.badge, { backgroundColor: resultColor + '22', borderColor: resultColor }]}>
+          <Text style={[styles.badgeText, { color: resultColor }]}>{resultLabel}</Text>
+        </View>
+      </View>
+
+      <View style={styles.matchRow}>
+        <Text style={styles.matchLeague}>{item.match_league}</Text>
+        <View style={styles.matchTeams}>
+          <Text style={styles.teamName} numberOfLines={1}>{item.match_home_team}</Text>
+          <Text style={styles.vs}>VS</Text>
+          <Text style={styles.teamName} numberOfLines={1}>{item.match_away_team}</Text>
+        </View>
+      </View>
+
+      <View style={styles.picksRow}>
+        <View style={styles.pickItem}>
+          <Text style={styles.pickLabel}>Your pick</Text>
+          <Text style={styles.pickValue}>{isReceived ? item.opponent_pick || '—' : item.challenger_pick}</Text>
+        </View>
+        <View style={styles.pickDivider} />
+        <View style={styles.pickItem}>
+          <Text style={styles.pickLabel}>Forfeit</Text>
+          <Text style={styles.pickValue} numberOfLines={1}>{item.forfeit}</Text>
+        </View>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -95,15 +132,28 @@ function ChallengeCard({ item, currentUserId, onAccept, onDecline, onMarkResult,
 export default function ChallengesScreen({ navigation }) {
   const [userId, setUserId] = useState(null);
   const [challenges, setChallenges] = useState([]);
-  const [tab, setTab] = useState('received'); // 'received' | 'sent'
+  const [tab, setTab] = useState('active'); // 'active' | 'completed'
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const realtimeSubRef = useRef(null);
 
   useFocusEffect(
     useCallback(() => {
       loadData();
     }, [])
   );
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      realtimeSubRef.current = supabase
+        .channel('challenges-screen')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges', filter: `opponent_id=eq.${user.id}` }, () => loadData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges', filter: `challenger_id=eq.${user.id}` }, () => loadData())
+        .subscribe();
+    });
+    return () => { if (realtimeSubRef.current) supabase.removeChannel(realtimeSubRef.current); };
+  }, []);
 
   async function loadData() {
     setLoading(true);
@@ -135,8 +185,21 @@ export default function ChallengesScreen({ navigation }) {
     navigation.navigate('AcceptPick', { challenge });
   }
 
-  function handleMarkResult(challenge) {
-    navigation.navigate('MarkResult', { challenge, currentUserId: userId });
+  async function handleCancel(challengeId) {
+    Alert.alert('Cancel Challenge', 'Are you sure you want to cancel this challenge?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Cancel Challenge', style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase
+            .from('challenges')
+            .update({ status: 'declined' })
+            .eq('id', challengeId);
+          if (error) return Alert.alert('Error', error.message);
+          loadData();
+        },
+      },
+    ]);
   }
 
   async function handleDecline(challengeId) {
@@ -156,34 +219,33 @@ export default function ChallengesScreen({ navigation }) {
     ]);
   }
 
-  const filtered = challenges.filter(c =>
-    tab === 'received' ? c.opponent_id === userId : c.challenger_id === userId
-  );
+  const activeChallenges = challenges.filter(c => c.status === 'pending' || c.status === 'accepted');
+  const completedChallenges = challenges.filter(c => c.status === 'completed' || c.status === 'declined');
 
-  const receivedCount = challenges.filter(c => c.opponent_id === userId && c.status === 'pending').length;
+  const pendingCount = activeChallenges.filter(c => c.opponent_id === userId && c.status === 'pending').length;
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>⚔️ Challenges</Text>
       </View>
 
-      {/* Tabs */}
       <View style={styles.tabs}>
         <TouchableOpacity
-          style={[styles.tab, tab === 'received' && styles.tabActive]}
-          onPress={() => setTab('received')}
+          style={[styles.tab, tab === 'active' && styles.tabActive]}
+          onPress={() => setTab('active')}
         >
-          <Text style={[styles.tabText, tab === 'received' && styles.tabTextActive]}>
-            Received {receivedCount > 0 ? `(${receivedCount})` : ''}
+          <Text style={[styles.tabText, tab === 'active' && styles.tabTextActive]}>
+            Open / Active {pendingCount > 0 ? `(${pendingCount})` : ''}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, tab === 'sent' && styles.tabActive]}
-          onPress={() => setTab('sent')}
+          style={[styles.tab, tab === 'completed' && styles.tabActive]}
+          onPress={() => setTab('completed')}
         >
-          <Text style={[styles.tabText, tab === 'sent' && styles.tabTextActive]}>Sent</Text>
+          <Text style={[styles.tabText, tab === 'completed' && styles.tabTextActive]}>
+            Completed {completedChallenges.length > 0 ? `(${completedChallenges.length})` : ''}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -191,32 +253,40 @@ export default function ChallengesScreen({ navigation }) {
         <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
-          data={filtered}
+          data={tab === 'active' ? activeChallenges : completedChallenges}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           ListEmptyComponent={
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyEmoji}>{tab === 'received' ? '📭' : '📤'}</Text>
+              <Text style={styles.emptyEmoji}>{tab === 'active' ? '⚔️' : '🏆'}</Text>
               <Text style={styles.emptyText}>
-                {tab === 'received' ? 'No challenges received yet' : 'No challenges sent yet'}
+                {tab === 'active' ? 'No active challenges' : 'No completed challenges yet'}
               </Text>
               <Text style={styles.emptySubtext}>
-                {tab === 'received' ? 'Ask a friend to challenge you!' : 'Go to Home and challenge someone!'}
+                {tab === 'active' ? 'Go to Home and challenge someone!' : 'Finish a challenge to see results here'}
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <ChallengeCard
-              item={item}
-              currentUserId={userId}
-              onAccept={handleAccept}
-              onDecline={handleDecline}
-              onMarkResult={handleMarkResult}
-              onPress={() => navigation.navigate('ChallengeDetail', { challenge: item, currentUserId: userId })}
-            />
-          )}
+          renderItem={({ item }) =>
+            tab === 'active' ? (
+              <ActiveChallengeCard
+                item={item}
+                currentUserId={userId}
+                onAccept={handleAccept}
+                onDecline={handleDecline}
+                onCancel={handleCancel}
+                onPress={() => navigation.navigate('ChallengeDetail', { challenge: item, currentUserId: userId })}
+              />
+            ) : (
+              <CompletedChallengeCard
+                item={item}
+                currentUserId={userId}
+                onPress={() => navigation.navigate('ChallengeDetail', { challenge: item, currentUserId: userId })}
+              />
+            )
+          }
         />
       )}
     </SafeAreaView>
@@ -231,12 +301,13 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', marginHorizontal: 20, marginBottom: 16, backgroundColor: colors.surface, borderRadius: 12, padding: 4, borderWidth: 1, borderColor: colors.border },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
   tabActive: { backgroundColor: colors.primary },
-  tabText: { color: colors.textSecondary, fontWeight: '600', fontSize: 14 },
+  tabText: { color: colors.textSecondary, fontWeight: '600', fontSize: 13 },
   tabTextActive: { color: colors.white },
 
   list: { paddingHorizontal: 20, paddingBottom: 20 },
 
   card: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
+  completedCard: { opacity: 0.85 },
   cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   avatarSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarSmallText: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
@@ -263,8 +334,8 @@ const styles = StyleSheet.create({
   declineBtnText: { color: '#EF4444', fontWeight: '700', fontSize: 14 },
   acceptBtn: { flex: 1, backgroundColor: '#10B981', borderRadius: 10, padding: 11, alignItems: 'center' },
   acceptBtnText: { color: colors.white, fontWeight: '700', fontSize: 14 },
-  markResultBtn: { backgroundColor: colors.primary + '22', borderWidth: 1, borderColor: colors.primary, borderRadius: 10, padding: 11, alignItems: 'center' },
-  markResultBtnText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+  cancelBtn: { borderWidth: 1, borderColor: '#EF4444', borderRadius: 10, padding: 11, alignItems: 'center' },
+  cancelBtnText: { color: '#EF4444', fontWeight: '700', fontSize: 14 },
 
   emptyCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 40, alignItems: 'center', borderWidth: 1, borderColor: colors.border, marginTop: 20 },
   emptyEmoji: { fontSize: 40, marginBottom: 12 },
