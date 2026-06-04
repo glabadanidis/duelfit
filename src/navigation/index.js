@@ -14,6 +14,7 @@ import OnboardingScreen from '../screens/Onboarding';
 import LoginScreen from '../screens/Auth/Login';
 import RegisterScreen from '../screens/Auth/Register';
 import ForgotPasswordScreen from '../screens/Auth/ForgotPassword';
+import ConfirmEmailScreen from '../screens/Auth/ConfirmEmail';
 import Step1Match from '../screens/NewChallenge/Step1Match';
 import Step2Pick from '../screens/NewChallenge/Step2Pick';
 import Step3Forfeit from '../screens/NewChallenge/Step3Forfeit';
@@ -95,6 +96,7 @@ function RootStack({ session, onboardingDone, setOnboardingDone }) {
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="ConfirmEmail" component={ConfirmEmailScreen} />
           </>
         )}
       </Stack.Navigator>

@@ -174,7 +174,11 @@ export default function ChallengeDetailScreen({ route, navigation }) {
   }
 
   async function approveProof() {
-    const { error } = await supabase.from('challenges').update({ proof_approved: true }).eq('id', challenge.id);
+    if (challenge.winner_id !== resolvedUserId) {
+      Alert.alert('Error', 'Only the winner can approve proof.');
+      return;
+    }
+    const { error } = await supabase.from('challenges').update({ proof_approved: true }).eq('id', challenge.id).eq('winner_id', resolvedUserId);
     if (error) { Alert.alert('Error', error.message); return; }
     setChallenge(prev => ({ ...prev, proof_approved: true }));
     Alert.alert('Proof approved! ✅', 'The forfeit has been confirmed.', [
@@ -419,6 +423,16 @@ export default function ChallengeDetailScreen({ route, navigation }) {
           </View>
         </View>
 
+        {/* Mark Result — shown to both participants on accepted challenges */}
+        {challenge.status === 'accepted' && (isChallenger || isOpponent) && (
+          <TouchableOpacity
+            style={styles.markResultBtn}
+            onPress={() => navigation.navigate('MarkResult', { challenge, currentUserId: resolvedUserId })}
+          >
+            <Text style={styles.markResultBtnText}>🏁 Mark Result</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Timeline */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📅 Timeline</Text>
@@ -519,6 +533,8 @@ const styles = StyleSheet.create({
   linkSubmitBtn: { backgroundColor: '#10B981', borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   linkSubmitText: { color: colors.white, fontWeight: '700', fontSize: 18 },
 
+  markResultBtn: { backgroundColor: colors.primary, borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 8 },
+  markResultBtnText: { color: colors.white, fontWeight: 'bold', fontSize: 16 },
   timelineRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   timelineLabel: { color: colors.textSecondary, fontSize: 13 },
   timelineValue: { color: colors.white, fontSize: 13, fontWeight: '500' },

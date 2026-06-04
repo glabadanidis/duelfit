@@ -38,8 +38,8 @@ export default function Step1Match({ navigation }) {
   }
 
   const filtered = matches.filter(m =>
-    m.strHomeTeam.toLowerCase().includes(search.toLowerCase()) ||
-    m.strAwayTeam.toLowerCase().includes(search.toLowerCase())
+    (m.strHomeTeam?.toLowerCase() || m.strEvent?.toLowerCase() || '').includes(search.toLowerCase()) ||
+    (m.strAwayTeam?.toLowerCase() || '').includes(search.toLowerCase())
   );
 
   function selectMatch(match) {

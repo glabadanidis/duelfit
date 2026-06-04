@@ -27,20 +27,29 @@ export default function MarkResultScreen({ route, navigation }) {
     if (!selected) return;
     setLoading(true);
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || (user.id !== challenge.challenger_id && user.id !== challenge.opponent_id)) {
+      setLoading(false);
+      return Alert.alert('Error', 'You are not a participant of this challenge.');
+    }
+
     const winnerId = determineWinner(selected);
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from('challenges')
       .update({ status: 'completed', winner_id: winnerId })
-      .eq('id', challenge.id);
+      .eq('id', challenge.id)
+      .eq('status', 'accepted')
+      .select('id')
+      .single();
 
     if (error) {
       setLoading(false);
       return Alert.alert('Error', error.message);
     }
 
-    // Award 10 points to winner
-    if (winnerId) {
+    // Only award points if we were the one to complete it (prevents double-award race)
+    if (updated && winnerId) {
       await supabase.rpc('increment_points', { user_id: winnerId, amount: 10 });
     }
 

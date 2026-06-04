@@ -64,6 +64,7 @@ export default function RegisterScreen({ navigation }) {
     });
     setLoading(false);
     if (error) return Alert.alert('Error', error.message);
+    navigation.replace('ConfirmEmail', { email });
   }
 
   return (

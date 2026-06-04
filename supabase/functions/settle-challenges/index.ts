@@ -58,13 +58,17 @@ Deno.serve(async () => {
       else if (opponentWon && !challengerWon) winner_id = challenge.opponent_id;
       // both picked same result (both right or both wrong) → winner_id stays null (draw)
 
-      await supabase
+      const { data: updated } = await supabase
         .from('challenges')
         .update({ status: 'completed', winner_id, result: actualResult })
-        .eq('id', challenge.id);
+        .eq('id', challenge.id)
+        .eq('status', 'accepted')
+        .select('id')
+        .single();
 
-      if (winner_id) {
-        await supabase.rpc('increment_points', { user_id: winner_id, points: 10 });
+      // Only award points if we were the one to complete it (prevents double-award race)
+      if (updated && winner_id) {
+        await supabase.rpc('increment_points', { user_id: winner_id, amount: 10 });
       }
 
       settled++;

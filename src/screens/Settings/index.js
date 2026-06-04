@@ -4,7 +4,7 @@ import {
   Alert, ActivityIndicator, ScrollView, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../../constants/supabase';
+import { supabase, SUPABASE_URL } from '../../constants/supabase';
 import colors from '../../constants/colors';
 
 function Section({ title, children }) {
@@ -134,7 +134,36 @@ export default function SettingsScreen({ navigation }) {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete', style: 'destructive',
-          onPress: () => Alert.alert('Contact Support', 'Please contact support to delete your account.'),
+          onPress: () => Alert.alert(
+            'Are you sure?',
+            'Last chance — all your challenges, points and profile will be gone forever.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Yes, delete my account', style: 'destructive',
+                onPress: async () => {
+                  setSaving(true);
+                  const { data: { session } } = await supabase.auth.getSession();
+                  const res = await fetch(
+                    `${SUPABASE_URL}/functions/v1/delete-account`,
+                    {
+                      method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${session?.access_token}`,
+                        'Content-Type': 'application/json',
+                      },
+                    }
+                  );
+                  setSaving(false);
+                  if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    return Alert.alert('Error', body.error || 'Failed to delete account. Please try again.');
+                  }
+                  await supabase.auth.signOut();
+                },
+              },
+            ]
+          ),
         },
       ]
     );

@@ -25,14 +25,20 @@ export default function AcceptPickScreen({ route, navigation }) {
   async function confirmAccept() {
     if (!selected) return;
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.id !== challenge.opponent_id) {
+      setLoading(false);
+      return Alert.alert('Error', 'You are not the opponent of this challenge.');
+    }
     const { error } = await supabase
       .from('challenges')
       .update({ status: 'accepted', opponent_pick: selected })
-      .eq('id', challenge.id);
+      .eq('id', challenge.id)
+      .eq('opponent_id', user.id)
+      .eq('status', 'pending');
     setLoading(false);
     if (error) return Alert.alert('Error', error.message);
 
-    const { data: { user } } = await supabase.auth.getUser();
     const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single();
     notifyChallengeAccepted(challenge.challenger_id, profile?.username || 'Someone');
 
