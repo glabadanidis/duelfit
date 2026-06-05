@@ -33,7 +33,9 @@ export async function registerForPushNotifications() {
     });
   }
 
-  const token = (await Notifications.getExpoPushTokenAsync()).data;
+  const token = (await Notifications.getExpoPushTokenAsync({
+    projectId: 'b735e07d-b072-45f8-815d-b4aa294a2852',
+  })).data;
   return token;
 }
 
