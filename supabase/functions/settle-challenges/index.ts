@@ -2,10 +2,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SPORTS_DB = 'https://www.thesportsdb.com/api/v1/json/3';
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const authHeader = req.headers.get('Authorization');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  if (!authHeader || authHeader !== `Bearer ${serviceKey}`) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    serviceKey,
   );
 
   // Fetch all accepted challenges whose match date has passed

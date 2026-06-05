@@ -191,10 +191,13 @@ export default function ChallengesScreen({ navigation }) {
       {
         text: 'Cancel Challenge', style: 'destructive',
         onPress: async () => {
+          const { data: { user } } = await supabase.auth.getUser();
           const { error } = await supabase
             .from('challenges')
-            .update({ status: 'declined' })
-            .eq('id', challengeId);
+            .delete()
+            .eq('id', challengeId)
+            .eq('challenger_id', user.id)
+            .eq('status', 'pending');
           if (error) return Alert.alert('Error', error.message);
           loadData();
         },
