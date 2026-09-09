@@ -1,0 +1,74 @@
+# Working in this repo
+
+DuelFit. React Native (Expo) plus Supabase. Read [ARCHITECTURE.md](ARCHITECTURE.md) before making
+non trivial changes. This file is the conventions and the traps.
+
+## Non negotiable
+
+- **Never commit a secret.** `.env` is gitignored and has never been committed, keep it that way.
+  The Supabase **service role key** must not appear anywhere in this repo, not in `.env`, not in a
+  comment, not in a migration. It belongs only in the Supabase edge function environment.
+- **Never remove the `.eq('status', 'accepted')` guard** on the settlement update in
+  `supabase/functions/settle-challenges/index.ts`. It is the only thing preventing a double points
+  award when the hourly cron and a manual `MarkResult` overlap.
+- **This is not a gambling app and must never read like one.** No odds, no stakes in money, no
+  "bet". The word used in the product is challenge or duel. Apple will reject it otherwise and the
+  whole positioning depends on it.
+- **Do not hand edit `buildNumber` or `versionCode`.** `eas.json` sets
+  `appVersionSource: "remote"`, EAS owns both.
+
+## Conventions
+
+- **Plain JavaScript, not TypeScript.** `typescript` is in devDependencies and there is a
+  `tsconfig.json`, but every source file is `.js`. Do not introduce `.tsx` files in passing.
+- **Function components with hooks only.** No class components anywhere.
+- **StyleSheet at the bottom of each file.** No styled-components, no Tailwind, no shared style
+  module beyond `src/constants/colors.js`. Always use the palette, never a raw hex in a screen.
+- **One directory per screen area** under `src/screens/`, with `index.js` as the main screen and
+  siblings for related screens (`Challenges/index.js` and `Challenges/Detail.js`).
+- **One Supabase client**, exported from `src/constants/supabase.js`. Never call `createClient`
+  again anywhere else.
+- **Dark theme only.** `userInterfaceStyle` is `dark` and the background is `#121212`. There is no
+  light mode and adding one is not on the roadmap.
+- **Portrait only, phone only.** `supportsTablet` is false.
+- Emoji in UI strings is intentional and part of the visual language. Keep it.
+
+## Traps that have bitten before
+
+- **`EXPO_PUBLIC_` variables are inlined at bundle time.** Changing `.env` needs a full Metro
+  restart, a hot reload silently keeps the old value.
+- **Push notifications and `expo-device` do not work in a simulator.** Test on a real device or
+  `registerForPushNotifications()` returns null and you will chase a bug that is not there.
+- **`getExpoPushTokenAsync` needs the explicit `projectId`.** It is hardcoded in
+  `notifications.js`. Removing it breaks push in production builds only, never in Expo Go, which is
+  the worst possible failure mode. There is a whole commit about this.
+- **`match_id` is TheSportsDB's event id and settlement depends on it.** Anything that creates a
+  challenge must store the real event id, never a locally generated one, or that challenge can
+  never settle.
+- **F1 is a different shape from team sports** at every layer. TheSportsDB returns no
+  `strHomeTeam`, the winner comes out of the `strResult` text, and the driver list is a hardcoded
+  table. Any change to matches, picks or settlement needs the F1 path checked separately.
+- **The World Cup is special cased twice** in `getUpcomingMatches`: a 30 day window instead of 14,
+  and it returns every fixture instead of only the earliest match day.
+- **`increment_points` and the profile creation trigger are not in this repo.** Do not assume the
+  database is only what `supabase/migrations/` describes. It is not.
+- **`src/components/` is empty.** If you are about to copy a card into a third screen, extract it
+  instead. That is how the two largest files got that big.
+
+## Before you commit
+
+There are no tests and no linter configured, so the checks are manual:
+
+- Ran on a **physical device**, not just a simulator.
+- Touched matches, picks or settlement? Checked **football and F1** separately.
+- Touched anything auth related? Signed out and back in, and registered a fresh account.
+- Added a Supabase object by hand in the dashboard? **Write the SQL into
+  `supabase/migrations/` in the same commit.** This is how the repo drifted from the database in the
+  first place.
+- Changed an edge function? Deployed it. A merged function that is not deployed does nothing.
+
+## Season maintenance
+
+`F1_DRIVERS` in `src/constants/api.js` is the 2026 lineup and needs editing every season. League ids
+occasionally change between seasons on TheSportsDB, and a wrong id fails silently as an empty
+fixture list rather than an error.
