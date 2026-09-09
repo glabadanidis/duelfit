@@ -210,11 +210,18 @@ export async function getUpcomingMatches(leagueId) {
       .sort((a, b) => new Date(`${a.dateEvent}T${a.strTime || '00:00:00'}`) - new Date(`${b.dateEvent}T${b.strTime || '00:00:00'}`));
   }
 
-  // Fetch all games in the current round
-  const round = await axios.get(`${SPORTS_DB}/eventsround.php?id=${leagueId}&r=${intRound}&s=${strSeason}`);
-  const allGames = round.data.events || [];
+  // Fetch current round + next 2 rounds to always have enough upcoming games
+  const roundsToFetch = [intRound, intRound + 1, intRound + 2];
+  const roundResults = await Promise.all(
+    roundsToFetch.map(r =>
+      axios.get(`${SPORTS_DB}/eventsround.php?id=${leagueId}&r=${r}&s=${strSeason}`)
+        .then(res => res.data.events || [])
+        .catch(() => [])
+    )
+  );
+  const allGames = roundResults.flat();
 
-  // Only not-started games within 14 days, sorted by date
+  // Only not-started games within the window, sorted by date
   const upcoming = allGames
     .filter(e => {
       const d = new Date(`${e.dateEvent}T${e.strTime || '00:00:00'}`);
@@ -225,10 +232,10 @@ export async function getUpcomingMatches(leagueId) {
 
   if (upcoming.length === 0) return [];
 
-  // World Cup: show all games in the current round (group stage spans multiple days)
+  // World Cup: show all games in the current + next rounds
   if (leagueId === 4429) return upcoming;
 
-  // Other leagues: show only the earliest match-day in this round
+  // Other leagues: show only the earliest match-day
   const firstDate = upcoming[0].dateEvent;
   return upcoming.filter(e => e.dateEvent === firstDate);
 }
