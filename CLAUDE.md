@@ -15,7 +15,8 @@ non trivial changes. This file is the conventions and the traps.
   "bet". The word used in the product is challenge or duel. Apple will reject it otherwise and the
   whole positioning depends on it.
 - **Do not hand edit `buildNumber` or `versionCode`.** `eas.json` sets
-  `appVersionSource: "remote"`, EAS owns both.
+  `appVersionSource: "remote"`, EAS owns both. `versionCode` has been removed from `app.json`
+  entirely for this reason. Do not put it back.
 
 ## Conventions
 

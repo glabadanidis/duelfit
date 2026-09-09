@@ -105,13 +105,12 @@ World Cup engagement, so it has commercial weight rather than being a nice to ha
 - No tests and no linter yet, so the pre commit checks are the manual list at the bottom of
   [CLAUDE.md](CLAUDE.md).
 
-## Housekeeping still open at the time of writing
+## Expo account
 
-Three files are uncommitted on `main` and should be committed before anyone branches off it,
-otherwise they will be lost or conflict:
+The Expo account `glabadanidis` is an **organisation**, converted from a personal account on
+2026-09-09 so it could have members. `app.json` has `"owner": "glabadanidis"` and the EAS project id
+is unchanged, so nothing in the code depends on that conversion. Simeon's personal Expo login is now
+`@glabadanidis-2`, which matters only if he is signing in to Expo Go.
 
-- `src/constants/api.js`, the fix that fetches the current round plus the next two so the fixture
-  feed stops emptying out between match days
-- `app.json`, adding `ITSAppUsesNonExemptEncryption: false` so submissions do not stall on export
-  compliance
-- `eas.json`, adding `appVersionSource: "remote"`
+The Android upload keystore was generated on 2026-09-09 and is stored on EAS, not in the repo. EAS
+manages it. Nobody needs a local copy and nobody should generate a second one.

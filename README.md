@@ -59,6 +59,25 @@ eas build --platform android --profile production
 eas submit --platform ios --latest
 ```
 
+**EAS never sees your local `.env`.** Builds run on Expo's servers, so the two Supabase variables
+have to exist on EAS as well or the build installs and then fails to reach Supabase on every screen.
+Set them once per environment:
+
+```bash
+eas env:create --name EXPO_PUBLIC_SUPABASE_URL \
+  --value "https://nofawxywnhqrqnwokkge.supabase.co" \
+  --visibility plaintext --environment preview --environment production
+
+eas env:create --name EXPO_PUBLIC_SUPABASE_ANON_KEY \
+  --value "<anon key>" \
+  --visibility plaintext --environment preview --environment production
+
+eas env:list
+```
+
+If a build logs `No environment variables with visibility "Plain text" and "Sensitive" found`, this
+is what is missing.
+
 Profiles in `eas.json`:
 
 | Profile | What it is for |

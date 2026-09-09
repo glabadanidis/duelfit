@@ -26,8 +26,7 @@
         "backgroundColor": "#121212"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.duelfit.app",
-      "versionCode": 1
+      "package": "com.duelfit.app"
     },
     "plugins": [
       [
