@@ -6,12 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#121212"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.duelfit.app",
@@ -25,7 +19,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#121212"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.duelfit.app"
     },
     "plugins": [
@@ -34,6 +27,15 @@
         {
           "icon": "./assets/icon.png",
           "color": "#FF5722"
+        }
+      ],
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#121212"
         }
       ]
     ],
