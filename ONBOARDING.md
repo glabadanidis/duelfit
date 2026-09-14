@@ -50,14 +50,15 @@ day or two, have him accept it, and watch it settle after the match.
 ## Day two: read, in this order
 
 1. [ARCHITECTURE.md](ARCHITECTURE.md) top to bottom. It is the map.
-2. `src/constants/api.js`. All the awkwardness lives here: three league branches, the World Cup
-   special cases, and F1 being a different shape at every layer.
+2. `src/constants/api.js`. All the awkwardness lives here: three league branches, the serialised
+   request queue the free tier forces on us, the 7 day visibility window, and F1 being both a
+   different shape at every layer and the one league exempt from that window.
 3. `supabase/functions/settle-challenges/index.ts`. It is short and it is the only real business
    logic in the system.
 4. [CLAUDE.md](CLAUDE.md). The traps. Every item on that list cost someone time already.
 5. [SUPPORT.md](SUPPORT.md). Skim it now, come back when a user complains.
 
-Then read the git log. Eleven commits, and two of them are called `Fix all 8 launch blockers` and
+Then read the git log. Sixteen commits, and two of them are called `Fix all 8 launch blockers` and
 `Fix remaining 3 launch blockers`. Reading those diffs tells you what has already been found and
 fixed, so you do not "fix" it again.
 

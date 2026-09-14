@@ -173,23 +173,53 @@ Professional League 4579.
 **Basketball:** NBA 4387.
 **Formula 1:** 4370, race winner only.
 
+### The 7 day window
+
+`WINDOW_DAYS = 7` is the single visibility rule. A fixture shows only if it has not started, is
+still in the future, and kicks off inside the window. A league with nothing inside the window is
+hidden, and a sport whose every league is hidden is hidden too, so out of season the Basketball tab
+disappears on its own.
+
+`ALWAYS_SHOW_LEAGUE_IDS` is the one exception and holds **Formula 1 only**, because races are up to
+a fortnight apart. The next race always shows however far away it is, and the tab goes only once
+there is no upcoming event at all.
+
+`getAvailableSports()` answers which sports and leagues to render. It probes one request per league,
+keeps the leagues inside the window, sorts them soonest first and drops the empty sports.
+`getAvailableLeagues()` is the flat version for screens with one league strip.
+
 `getUpcomingMatches(leagueId)` branches three ways:
 
 - **F1 (4370)** goes to `getF1Races()`, which groups every session by Grand Prix name, prefers the
-  Race session over practice and qualifying, and returns exactly one upcoming Grand Prix no matter
-  how far away it is.
-- **NBA (4387)** goes to `getNBAGames()`, which returns every game on the earliest available date.
+  Race session over practice and qualifying, and returns exactly one upcoming Grand Prix.
+- **NBA (4387)** goes to `getNBAGames()`, which returns the in window games from the next events list.
 - **Everything else** reads the next event to learn `intRound` and `strSeason`, then fetches
-  **round, round+1 and round+2** in parallel with a per round `.catch(() => [])`. Knockout rounds
-  (`intRound >= 100`) or missing round data skip that and use the next events list directly.
+  **round, round+1 and round+2** and merges them with the next events list, deduped on `idEvent`.
+  Knockout rounds (`intRound >= 100`) or missing round data use the next events list alone.
 
-Then two rules on top:
+`intRound` and `strSeason` come back as **strings**, so the round is coerced with `Number()`. Without
+that, `intRound + 1` concatenates and every domestic league silently returns nothing.
 
-- The window is **30 days for the World Cup, 14 days for everything else**.
-- The World Cup shows **every** upcoming fixture in the window. Every other league shows **only the
-  earliest match day**, so the feed is one round at a time.
+Fetching three rounds rather than one is necessary because the free tier returns a single fixture
+from `eventsnextleague.php` and five per round from `eventsround.php`.
 
-Fetching three rounds rather than one is why the feed no longer empties out between match days.
+### Talking to the free tier
+
+The free tier rate limits hard and the 429 body is an **HTML error page, not JSON**, so a careless
+caller reads `events` as undefined and concludes a league has no fixtures. Measured: 12 sequential
+requests 350ms apart all succeed, 150ms apart fails from the tenth, and a single `Promise.all` over
+12 leagues returns 429 for all of them and keeps rejecting for about a minute.
+
+Everything therefore goes through the serialised `fetchJson` queue in `api.js`. It spaces requests
+350ms apart, retries once, and returns **`null` for a failed request as distinct from `[]` for no
+fixtures**. Callers must keep those apart: a league that cannot be checked stays visible, and a
+probe that fails everywhere keeps the previous answer instead of emptying the screen. Nothing may
+call axios against TheSportsDB directly, which is why `Challenges/Detail.js` uses the exported
+`lookupEvent()`.
+
+Because probing every league costs a request each and about five seconds, the answer is cached in
+AsyncStorage under `duelfit.availability.v1` with a 6 hour TTL, alongside a 60 second per URL
+response cache. Pull to refresh forces a recheck.
 
 **Tennis is deliberately absent.** The free tier has no Grand Slam fixtures. Adding it needs a
 paid TheSportsDB tier or a move to API-Football.
@@ -263,8 +293,10 @@ Worth knowing before you touch anything, in rough order of how much they matter.
   migration says "key operations are scoped further in app code", which means the database is not
   actually stopping an opponent from rewriting `challenger_pick` after the fact. App code is not a
   security boundary.
-- **`src/components/` is empty.** Card and row markup is duplicated across screens, which is why
-  `Challenges/Detail.js` is 541 lines and `Home/index.js` is 449.
+- **`src/components/` holds only `MatchRow`.** The rest of the card and row markup is still
+  duplicated across screens, which is why `Challenges/Detail.js` is 541 lines.
 - **No tests of any kind.**
 - **TheSportsDB free tier is rate limited and has no SLA.** It is a single point of failure for both
-  the fixture feed and settlement.
+  the fixture feed and settlement, and the limit is low enough to shape the design: see the
+  serialised queue above. A paid key or a move to API-Football would remove the constraint and let
+  league probing run in parallel again.
