@@ -4,31 +4,51 @@ import {
   ActivityIndicator, TextInput, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUpcomingMatches, LEAGUES, getF1RaceFlag, getTeamFlag } from '../../constants/api';
+import { getUpcomingMatches, getAvailableLeagues, WINDOW_DAYS } from '../../constants/api';
 import { useChallenge } from '../../constants/challengeContext';
+import MatchRow from '../../components/MatchRow';
 import colors from '../../constants/colors';
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-}
 
 export default function Step1Match({ navigation }) {
   const { updateChallenge } = useChallenge();
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedLeague, setSelectedLeague] = useState(LEAGUES[0]);
+  const [leagues, setLeagues] = useState([]);
+  const [selectedLeague, setSelectedLeague] = useState(null);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
 
-  useEffect(() => { loadMatches(LEAGUES[0]); }, []);
+  useEffect(() => { loadLeagues(); }, []);
+
+  // Only leagues with something on in the next WINDOW_DAYS days are offered
+  async function loadLeagues() {
+    setLoading(true);
+    let available = [];
+    try {
+      available = await getAvailableLeagues();
+    } catch { available = []; }
+    setLeagues(available);
+    setSelectedLeague(available[0] || null);
+    await loadMatches(available[0] || null);
+  }
 
   async function loadMatches(league) {
+    if (!league) {
+      setMatches([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setLoadError(false);
     try {
+      // null means the request failed, which is not the same as the league having no fixtures
       const data = await getUpcomingMatches(league.id);
-      setMatches(data.slice(0, 15));
-    } catch { setMatches([]); }
+      setMatches(data === null ? [] : data.slice(0, 15));
+      setLoadError(data === null);
+    } catch {
+      setMatches([]);
+      setLoadError(true);
+    }
     setLoading(false);
   }
 
@@ -66,10 +86,10 @@ export default function Step1Match({ navigation }) {
       />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.leagueScroll}>
-        {LEAGUES.map(l => (
+        {leagues.map(l => (
           <TouchableOpacity
             key={l.id}
-            style={[styles.chip, selectedLeague.id === l.id && styles.chipActive]}
+            style={[styles.chip, selectedLeague?.id === l.id && styles.chipActive]}
             onPress={() => selectLeague(l)}
           >
             {l.logo
@@ -88,32 +108,17 @@ export default function Step1Match({ navigation }) {
           {filtered.map(match => (
             <TouchableOpacity key={match.idEvent} style={styles.matchCard} onPress={() => selectMatch(match)}>
               <Text style={styles.league}>{match.strLeague}</Text>
-              {match.strHomeTeam ? (
-                <View style={styles.teams}>
-                  <View style={styles.teamBlock}>
-                    {getTeamFlag(match.strHomeTeam)
-                      ? <Text style={styles.teamFlag}>{getTeamFlag(match.strHomeTeam)}</Text>
-                      : match.strHomeTeamBadge
-                        ? <Image source={{ uri: match.strHomeTeamBadge }} style={styles.teamBadge} resizeMode="contain" />
-                        : null}
-                    <Text style={styles.team} numberOfLines={1}>{match.strHomeTeam}</Text>
-                  </View>
-                  <Text style={styles.vs}>VS</Text>
-                  <View style={styles.teamBlock}>
-                    {getTeamFlag(match.strAwayTeam)
-                      ? <Text style={styles.teamFlag}>{getTeamFlag(match.strAwayTeam)}</Text>
-                      : match.strAwayTeamBadge
-                        ? <Image source={{ uri: match.strAwayTeamBadge }} style={styles.teamBadge} resizeMode="contain" />
-                        : null}
-                    <Text style={styles.team} numberOfLines={1}>{match.strAwayTeam}</Text>
-                  </View>
-                </View>
-              ) : (
-                <Text style={styles.raceName} numberOfLines={1}>{getF1RaceFlag(match.strEvent)} {match.strEvent}</Text>
-              )}
-              <Text style={styles.date}>📅 {formatDate(match.dateEvent)} · {match.strTime?.slice(0,5) || 'TBD'}</Text>
+              <MatchRow match={match} />
             </TouchableOpacity>
           ))}
+
+          {filtered.length === 0 && (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>
+                {loadError ? 'Could not load fixtures' : `Nothing on in the next ${WINDOW_DAYS} days`}
+              </Text>
+            </View>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -136,12 +141,6 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 20 },
   matchCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.border },
   league: { color: colors.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  teams: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  teamBlock: { flex: 1, alignItems: 'center', gap: 4 },
-  teamBadge: { width: 36, height: 36 },
-  teamFlag: { fontSize: 32 },
-  team: { color: colors.white, fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
-  vs: { color: colors.primary, fontWeight: 'bold', fontSize: 11, marginHorizontal: 6 },
-  date: { color: colors.textSecondary, fontSize: 12, textAlign: 'center' },
-  raceName: { color: colors.white, fontWeight: 'bold', fontSize: 14, textAlign: 'center', marginBottom: 6 },
+  emptyCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  emptyText: { color: colors.white, fontWeight: '600', fontSize: 14 },
 });

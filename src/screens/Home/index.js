@@ -6,15 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
-import { getUpcomingMatches, SPORTS, getF1RaceFlag, getTeamFlag } from '../../constants/api';
+import { getUpcomingMatches, getAvailableSports, WINDOW_DAYS } from '../../constants/api';
 import { useChallenge } from '../../constants/challengeContext';
+import MatchRow from '../../components/MatchRow';
 import colors from '../../constants/colors';
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-}
 
 function ActiveChallengeCard({ item, currentUserId, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
@@ -41,34 +36,12 @@ function ActiveChallengeCard({ item, currentUserId, onPress }) {
 }
 
 function MatchCard({ match, onChallenge }) {
-  const isF1 = !match.strHomeTeam;
   return (
     <View style={styles.matchCard}>
       <Text style={styles.matchLeague}>{match.strLeague}</Text>
-      {isF1 ? (
-        <Text style={styles.f1RaceName} numberOfLines={1}>{getF1RaceFlag(match.strEvent)} {match.strEvent}</Text>
-      ) : (
-        <View style={styles.matchTeams}>
-          <View style={styles.teamBlock}>
-            {getTeamFlag(match.strHomeTeam)
-              ? <Text style={styles.teamFlag}>{getTeamFlag(match.strHomeTeam)}</Text>
-              : match.strHomeTeamBadge
-                ? <Image source={{ uri: match.strHomeTeamBadge }} style={styles.teamBadge} resizeMode="contain" />
-                : null}
-            <Text style={styles.teamName} numberOfLines={1}>{match.strHomeTeam}</Text>
-          </View>
-          <Text style={styles.vs}>VS</Text>
-          <View style={styles.teamBlock}>
-            {getTeamFlag(match.strAwayTeam)
-              ? <Text style={styles.teamFlag}>{getTeamFlag(match.strAwayTeam)}</Text>
-              : match.strAwayTeamBadge
-                ? <Image source={{ uri: match.strAwayTeamBadge }} style={styles.teamBadge} resizeMode="contain" />
-                : null}
-            <Text style={styles.teamName} numberOfLines={1}>{match.strAwayTeam}</Text>
-          </View>
-        </View>
-      )}
-      <Text style={styles.matchDate}>{formatDate(match.dateEvent)} · {match.strTime?.slice(0,5) || 'TBD'}</Text>
+      <View style={styles.matchRowWrap}>
+        <MatchRow match={match} />
+      </View>
       <TouchableOpacity style={styles.challengeBtn} onPress={() => onChallenge(match)}>
         <Text style={styles.challengeBtnText}>⚔️ Challenge Someone</Text>
       </TouchableOpacity>
@@ -84,10 +57,11 @@ export default function HomeScreen({ navigation }) {
   const [pendingForfeits, setPendingForfeits] = useState([]);
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [matches, setMatches] = useState([]);
-  const [selectedSport, setSelectedSport] = useState(SPORTS[0]);
-  const [selectedLeague, setSelectedLeague] = useState(SPORTS[0].leagues[0]);
-  const [sortedLeagues, setSortedLeagues] = useState(SPORTS[0].leagues);
+  const [availableSports, setAvailableSports] = useState([]);
+  const [selectedSport, setSelectedSport] = useState(null);
+  const [selectedLeague, setSelectedLeague] = useState(null);
   const [wonLost, setWonLost] = useState({ won: 0, lost: 0 });
+  const [loadError, setLoadError] = useState(false);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -98,14 +72,22 @@ export default function HomeScreen({ navigation }) {
   );
 
   useEffect(() => {
-    sortLeaguesAndLoad(SPORTS[0]);
+    loadSports();
   }, []);
 
-  async function sortLeaguesAndLoad(sport) {
-    const leagues = sport.leagues;
-    setSortedLeagues(leagues);
-    setSelectedLeague(leagues[0]);
-    await loadMatches(leagues[0]);
+  // Sports and leagues with nothing on in the next WINDOW_DAYS days are not shown at all
+  async function loadSports(force = false) {
+    setLoadingMatches(true);
+    let sports = [];
+    try {
+      sports = await getAvailableSports({ force });
+    } catch (e) {
+      sports = [];
+    }
+    setAvailableSports(sports);
+    setSelectedSport(sports[0] || null);
+    setSelectedLeague(sports[0]?.leagues[0] || null);
+    await loadMatches(sports[0]?.leagues[0] || null);
   }
 
   useEffect(() => {
@@ -161,25 +143,36 @@ export default function HomeScreen({ navigation }) {
   }
 
   async function loadMatches(league = selectedLeague) {
+    if (!league) {
+      setMatches([]);
+      setLoadingMatches(false);
+      return;
+    }
     setLoadingMatches(true);
+    setLoadError(false);
     try {
+      // null means the request failed, which is not the same as the league having no fixtures
       const data = await getUpcomingMatches(league.id);
-      setMatches(data.slice(0, 10));
+      setMatches(data === null ? [] : data.slice(0, 10));
+      setLoadError(data === null);
     } catch (e) {
       setMatches([]);
+      setLoadError(true);
     }
     setLoadingMatches(false);
   }
 
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([loadUserData(), loadMatches()]);
+    // The window moves, so recheck which sports and leagues still qualify
+    await Promise.all([loadUserData(), loadSports(true)]);
     setRefreshing(false);
   }
 
   async function selectSport(sport) {
     setSelectedSport(sport);
-    await sortLeaguesAndLoad(sport);
+    setSelectedLeague(sport.leagues[0]);
+    await loadMatches(sport.leagues[0]);
   }
 
   async function selectLeague(league) {
@@ -329,10 +322,10 @@ export default function HomeScreen({ navigation }) {
 
           {/* Sport tabs */}
           <View style={styles.sportTabs}>
-            {SPORTS.map((s) => (
+            {availableSports.map((s) => (
               <TouchableOpacity
                 key={s.id}
-                style={[styles.sportTab, selectedSport.id === s.id && styles.sportTabActive]}
+                style={[styles.sportTab, selectedSport?.id === s.id && styles.sportTabActive]}
                 onPress={() => selectSport(s)}
               >
                 <Text style={styles.sportTabText}>{s.emoji} {s.name}</Text>
@@ -342,10 +335,10 @@ export default function HomeScreen({ navigation }) {
 
           {/* League chips */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.leagueScroll}>
-            {sortedLeagues.map((l) => (
+            {(selectedSport?.leagues || []).map((l) => (
               <TouchableOpacity
                 key={l.id}
-                style={[styles.leagueChip, selectedLeague.id === l.id && styles.leagueChipActive]}
+                style={[styles.leagueChip, selectedLeague?.id === l.id && styles.leagueChipActive]}
                 onPress={() => selectLeague(l)}
               >
                 {l.logo
@@ -361,7 +354,14 @@ export default function HomeScreen({ navigation }) {
             <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
           ) : matches.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No upcoming matches found</Text>
+              <Text style={styles.emptyText}>
+                {loadError ? 'Could not load fixtures' : `Nothing on in the next ${WINDOW_DAYS} days`}
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {loadError
+                  ? 'Pull down to try again'
+                  : 'Pull down to refresh once the next round is scheduled'}
+              </Text>
             </View>
           ) : (
             matches.map((match) => (
@@ -436,14 +436,7 @@ const styles = StyleSheet.create({
 
   matchCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
   matchLeague: { color: colors.textSecondary, fontSize: 11, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  f1RaceName: { color: colors.white, fontWeight: 'bold', fontSize: 15, textAlign: 'center', marginBottom: 8 },
-  matchTeams: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  teamBlock: { flex: 1, alignItems: 'center', gap: 4 },
-  teamBadge: { width: 36, height: 36 },
-  teamFlag: { fontSize: 32 },
-  teamName: { color: colors.white, fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
-  vs: { color: colors.primary, fontWeight: 'bold', fontSize: 12, marginHorizontal: 8 },
-  matchDate: { color: colors.textSecondary, fontSize: 12, textAlign: 'center', marginBottom: 12 },
+  matchRowWrap: { marginBottom: 12 },
   challengeBtn: { backgroundColor: colors.primary, borderRadius: 10, padding: 10, alignItems: 'center' },
   challengeBtnText: { color: colors.white, fontWeight: 'bold', fontSize: 13 },
 });

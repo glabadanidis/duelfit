@@ -49,11 +49,34 @@ non trivial changes. This file is the conventions and the traps.
 - **F1 is a different shape from team sports** at every layer. TheSportsDB returns no
   `strHomeTeam`, the winner comes out of the `strResult` text, and the driver list is a hardcoded
   table. Any change to matches, picks or settlement needs the F1 path checked separately.
-- **The World Cup is special cased twice** in `getUpcomingMatches`: a 30 day window instead of 14,
-  and it returns every fixture instead of only the earliest match day.
+- **`WINDOW_DAYS` in `src/constants/api.js` is the visibility rule.** Nothing kicking off outside
+  the next 7 days is shown, and a league with nothing inside the window is hidden entirely, as is a
+  sport whose every league is hidden. Out of season that means the Basketball tab disappears on its
+  own. The single exception is `ALWAYS_SHOW_LEAGUE_IDS`, which holds Formula 1 only: races are a
+  fortnight apart so the next one always shows, and the tab goes only when the season ends. Do not
+  add a league to that set without a reason as concrete as that one.
+- **TheSportsDB returns `intRound` and `strSeason` as strings.** `intRound + 1` concatenates, so
+  rounds 4, 5, 6 became `'4'`, `'41'`, `'42'` and every domestic league silently showed no fixtures
+  at all. `getUpcomingMatches` coerces with `Number()`. There is a whole commit about this.
+- **The free tier caps results per endpoint.** `eventsnextleague.php` returns a single fixture and
+  `eventsround.php` returns five per round, which is why `getUpcomingMatches` merges the current
+  and next two rounds and dedupes on `idEvent` rather than trusting one call.
+- **Never call TheSportsDB concurrently, and never call axios against it directly.** Measured: 12
+  sequential requests 350ms apart all succeed, 150ms apart fails from the tenth, and a single
+  `Promise.all` over 12 leagues returns 429 for every one of them and keeps rejecting for about a
+  minute. Worse, a 429 body is an HTML error page, so `res.data.events` reads as undefined and every
+  league looks like it has no fixtures, which empties the whole home screen. All requests go through
+  the serialised `fetchJson` queue in `src/constants/api.js`, which spaces them, retries once, and
+  returns **`null` for a failed request as distinct from `[]` for no fixtures**. Keep that
+  distinction alive in callers, otherwise the silent-empty-screen bug comes straight back.
+- **League availability is cached in AsyncStorage** under `duelfit.availability.v1` with a 6 hour
+  TTL, because probing every league costs one request each and about five seconds. A probe that
+  fails everywhere keeps the previous answer instead of caching an empty one. Pull to refresh
+  forces a recheck.
 - **`increment_points` and the profile creation trigger are not in this repo.** Do not assume the
   database is only what `supabase/migrations/` describes. It is not.
-- **`src/components/` is empty.** If you are about to copy a card into a third screen, extract it
+- **`src/components/` holds only `MatchRow`**, the date and kick off block plus the two team rows,
+  shared by Home and Step1Match. If you are about to copy a card into a third screen, extract it
   instead. That is how the two largest files got that big.
 
 ## Before you commit

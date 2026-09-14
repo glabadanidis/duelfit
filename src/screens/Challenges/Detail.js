@@ -3,12 +3,9 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import axios from 'axios';
 import { supabase } from '../../constants/supabase';
-import { getTeamFlag } from '../../constants/api';
+import { getTeamFlag, lookupEvent } from '../../constants/api';
 import colors from '../../constants/colors';
-
-const SPORTS_DB = 'https://www.thesportsdb.com/api/v1/json/3';
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -79,9 +76,9 @@ export default function ChallengeDetailScreen({ route, navigation }) {
     if (!challenge) return;
     if (challenge.match_id && challenge.status === 'completed') {
       setScoreLoading(true);
-      axios.get(`${SPORTS_DB}/lookupevent.php?id=${challenge.match_id}`)
-        .then(res => {
-          const e = res.data?.events?.[0];
+      lookupEvent(challenge.match_id)
+        .then(data => {
+          const e = data?.events?.[0];
           if (e && e.intHomeScore !== null && e.intHomeScore !== '') {
             setScore({ home: e.intHomeScore, away: e.intAwayScore });
           }
