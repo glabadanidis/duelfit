@@ -9,4 +9,5 @@ export default {
   border: '#333333',
   error: '#FF4444',
   warning: '#FF9800',
+  success: '#10B981',
 };

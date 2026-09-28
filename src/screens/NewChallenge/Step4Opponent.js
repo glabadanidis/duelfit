@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Share,
+  TextInput, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import { useChallenge } from '../../constants/challengeContext';
 import { notifyChallengeSent } from '../../constants/notifications';
@@ -13,21 +14,88 @@ export default function Step4Opponent({ navigation }) {
   const { challenge, updateChallenge, resetChallenge } = useChallenge();
   const { match, pick, forfeit } = challenge;
   const [search, setSearch] = useState('');
-  const [results, setResults] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [others, setOthers] = useState([]);
+  const [userId, setUserId] = useState(null);
+  const latestQuery = useRef('');
   const [opponent, setOpponent] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
-  async function searchUsers(text) {
+  // Reloads on focus so that adding a friend via the Friends screen and coming
+  // back shows them straight away.
+  useFocusEffect(
+    useCallback(() => {
+      loadFriends();
+    }, [])
+  );
+
+  // Friends come first so the usual opponents are one tap away. Anyone else can
+  // still be challenged by searching their username, see onSearch.
+  async function loadFriends() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setUserId(user.id);
+    const { data } = await supabase
+      .from('friendships')
+      .select(`
+        requester_id,
+        requester:profiles!friendships_requester_id_fkey(id, username, full_name),
+        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name)
+      `)
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+    const list = (data || [])
+      .map(f => (f.requester_id === user.id ? f.addressee : f.requester))
+      .filter(Boolean)
+      .sort((a, b) => a.username.localeCompare(b.username));
+    setFriends(list);
+    setLoading(false);
+  }
+
+  // Filters the friends list locally and, from two characters on, also searches
+  // every player. latestQuery drops a slow response to an earlier keystroke so it
+  // cannot overwrite the results for what is typed now.
+  async function onSearch(text) {
     setSearch(text);
-    if (text.length < 2) { setResults([]); return; }
+    const q = text.trim();
+    latestQuery.current = q;
+    if (q.length < 2) { setOthers([]); return; }
     const { data } = await supabase
       .from('profiles')
       .select('id, username, full_name')
-      .ilike('username', `%${text}%`)
+      .ilike('username', `%${q}%`)
+      .neq('id', userId)
       .limit(10);
-    const { data: { user } } = await supabase.auth.getUser();
-    setResults((data || []).filter(u => u.id !== user.id));
+    if (latestQuery.current === q) setOthers(data || []);
+  }
+
+  const query = search.trim().toLowerCase();
+  const shown = query
+    ? friends.filter(u =>
+        u.username.toLowerCase().includes(query) ||
+        (u.full_name || '').toLowerCase().includes(query))
+    : friends;
+  const friendIds = new Set(friends.map(u => u.id));
+  const otherPlayers = query.length >= 2 ? others.filter(u => !friendIds.has(u.id)) : [];
+
+  function renderUser(u) {
+    return (
+      <TouchableOpacity
+        key={u.id}
+        style={[styles.userCard, opponent?.id === u.id && styles.userCardActive]}
+        onPress={() => setOpponent(u)}
+      >
+        <View style={styles.userAvatar}>
+          <Text style={styles.userAvatarText}>{u.username[0].toUpperCase()}</Text>
+        </View>
+        <View>
+          <Text style={styles.userUsername}>@{u.username}</Text>
+          <Text style={styles.userFullName}>{u.full_name}</Text>
+        </View>
+        {opponent?.id === u.id && <Text style={styles.checkmark}>✓</Text>}
+      </TouchableOpacity>
+    );
   }
 
   async function sendChallenge() {
@@ -93,33 +161,44 @@ export default function Step4Opponent({ navigation }) {
           </View>
         </View>
 
-        {/* Search */}
-        <Text style={styles.sectionLabel}>Search by username:</Text>
+        <Text style={styles.sectionLabel}>Pick your opponent:</Text>
         <TextInput
           style={styles.searchInput}
-          placeholder="e.g. john_doe"
+          placeholder="Search friends or any username..."
           placeholderTextColor={colors.textSecondary}
           value={search}
-          onChangeText={searchUsers}
+          onChangeText={onSearch}
           autoCapitalize="none"
         />
 
-        {results.map(u => (
-          <TouchableOpacity
-            key={u.id}
-            style={[styles.userCard, opponent?.id === u.id && styles.userCardActive]}
-            onPress={() => setOpponent(u)}
-          >
-            <View style={styles.userAvatar}>
-              <Text style={styles.userAvatarText}>{u.username[0].toUpperCase()}</Text>
-            </View>
-            <View>
-              <Text style={styles.userUsername}>@{u.username}</Text>
-              <Text style={styles.userFullName}>{u.full_name}</Text>
-            </View>
-            {opponent?.id === u.id && <Text style={styles.checkmark}>✓</Text>}
-          </TouchableOpacity>
-        ))}
+        {loading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
+        ) : (
+          <>
+            <Text style={styles.groupLabel}>👥 Friends</Text>
+            {friends.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptySubtext}>No friends yet. Search any username above to challenge someone, or add friends so they show up here.</Text>
+                <TouchableOpacity style={styles.findBtn} onPress={() => navigation.navigate('Friends', { tab: 'search' })}>
+                  <Text style={styles.findBtnText}>+ Find Friends</Text>
+                </TouchableOpacity>
+              </View>
+            ) : shown.length === 0 ? (
+              <Text style={styles.noMatch}>No friend matches "{search.trim()}"</Text>
+            ) : (
+              shown.map(renderUser)
+            )}
+
+            {query.length >= 2 && (
+              <>
+                <Text style={styles.groupLabel}>🌍 Other players</Text>
+                {otherPlayers.length === 0
+                  ? <Text style={styles.noMatch}>No other players match "{search.trim()}"</Text>
+                  : otherPlayers.map(renderUser)}
+              </>
+            )}
+          </>
+        )}
 
         {opponent && (
           <TouchableOpacity style={styles.sendBtn} onPress={sendChallenge} disabled={sending}>
@@ -155,6 +234,12 @@ const styles = StyleSheet.create({
   userUsername: { color: colors.white, fontWeight: 'bold', fontSize: 14 },
   userFullName: { color: colors.textSecondary, fontSize: 12 },
   checkmark: { color: colors.accent, fontWeight: 'bold', fontSize: 18, marginLeft: 'auto' },
+  groupLabel: { color: colors.textSecondary, fontWeight: '700', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginTop: 12, marginBottom: 8 },
+  noMatch: { color: colors.textSecondary, fontSize: 13, marginBottom: 8 },
+  emptyCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  emptySubtext: { color: colors.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: 16 },
+  findBtn: { backgroundColor: colors.primary, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 9 },
+  findBtnText: { color: colors.white, fontWeight: '700', fontSize: 14 },
   sendBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16, marginBottom: 40 },
   sendBtnText: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
 });

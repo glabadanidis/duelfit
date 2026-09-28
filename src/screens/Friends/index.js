@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
+import { notifyFriendRequest, notifyFriendAccepted } from '../../constants/notifications';
 import colors from '../../constants/colors';
 
 function Avatar({ username, size = 40, bg = colors.primary }) {
@@ -16,13 +17,14 @@ function Avatar({ username, size = 40, bg = colors.primary }) {
   );
 }
 
-export default function FriendsScreen({ navigation }) {
-  const [tab, setTab] = useState('friends'); // 'friends' | 'requests' | 'search'
+export default function FriendsScreen({ navigation, route }) {
+  const [tab, setTab] = useState(route?.params?.tab || 'friends'); // 'friends' | 'requests' | 'search'
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [userId, setUserId] = useState(null);
+  const [myUsername, setMyUsername] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pendingIds, setPendingIds] = useState(new Set());
@@ -38,6 +40,8 @@ export default function FriendsScreen({ navigation }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setUserId(user.id);
+    const { data: me } = await supabase.from('profiles').select('username').eq('id', user.id).single();
+    setMyUsername(me?.username || '');
 
     const { data: fs } = await supabase
       .from('friendships')
@@ -89,18 +93,26 @@ export default function FriendsScreen({ navigation }) {
   async function sendRequest(addresseeId) {
     const { error } = await supabase
       .from('friendships')
-      .insert({ requester_id: userId, addressee_id: addresseeId });
+      .insert({ requester_id: userId, addressee_id: addresseeId, status: 'pending' });
+    // 23505 is friendships_pair_key: a row for this pair already exists, most likely
+    // because they sent you one at the same moment. Reloading shows it as it is.
+    if (error?.code === '23505') return loadAll();
     if (error) return Alert.alert('Error', error.message);
     setPendingIds(prev => new Set([...prev, addresseeId]));
+    notifyFriendRequest(addresseeId, myUsername || 'Someone');
   }
 
   async function acceptRequest(friendshipId) {
-    await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+    const req = requests.find(r => r.id === friendshipId);
+    const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+    if (error) return Alert.alert('Error', error.message);
+    if (req?.profile?.id) notifyFriendAccepted(req.profile.id, myUsername || 'Someone');
     loadAll();
   }
 
   async function declineRequest(friendshipId) {
-    await supabase.from('friendships').delete().eq('id', friendshipId);
+    const { error } = await supabase.from('friendships').delete().eq('id', friendshipId);
+    if (error) return Alert.alert('Error', error.message);
     loadAll();
   }
 
@@ -118,6 +130,9 @@ export default function FriendsScreen({ navigation }) {
   }
 
   const friendIds = new Set(friends.map(f => f.profile?.id));
+  // People who already sent you a request: offer Accept rather than a second
+  // request going the other way.
+  const incomingByUser = new Map(requests.map(r => [r.profile?.id, r.id]));
 
   return (
     <SafeAreaView style={styles.container}>
@@ -241,6 +256,7 @@ export default function FriendsScreen({ navigation }) {
                 renderItem={({ item }) => {
                   const isFriend = friendIds.has(item.id);
                   const isPending = pendingIds.has(item.id);
+                  const incomingId = incomingByUser.get(item.id);
                   return (
                     <View style={styles.row}>
                       <Avatar username={item.username} />
@@ -252,6 +268,10 @@ export default function FriendsScreen({ navigation }) {
                         <View style={styles.friendBadge}>
                           <Text style={styles.friendBadgeText}>Friends</Text>
                         </View>
+                      ) : incomingId ? (
+                        <TouchableOpacity style={styles.acceptPill} onPress={() => acceptRequest(incomingId)}>
+                          <Text style={styles.acceptPillText}>✓ Accept</Text>
+                        </TouchableOpacity>
                       ) : isPending ? (
                         <View style={styles.pendingBadge}>
                           <Text style={styles.pendingBadgeText}>Sent</Text>
@@ -303,6 +323,8 @@ const styles = StyleSheet.create({
   acceptBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center' },
   acceptBtnText: { color: colors.white, fontWeight: 'bold' },
 
+  acceptPill: { backgroundColor: colors.success, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
+  acceptPillText: { color: colors.white, fontWeight: '700', fontSize: 13 },
   addBtn: { backgroundColor: colors.primary, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
   addBtnText: { color: colors.white, fontWeight: '700', fontSize: 13 },
   friendBadge: { backgroundColor: '#10B98122', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#10B981' },

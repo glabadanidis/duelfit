@@ -62,6 +62,7 @@ export default function HomeScreen({ navigation }) {
   const [selectedLeague, setSelectedLeague] = useState(null);
   const [wonLost, setWonLost] = useState({ won: 0, lost: 0 });
   const [loadError, setLoadError] = useState(false);
+  const [friendRequests, setFriendRequests] = useState(0);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -114,6 +115,13 @@ export default function HomeScreen({ navigation }) {
       .eq('id', user.id)
       .single();
     if (profileData) setProfile(profileData);
+
+    const { count: incoming } = await supabase
+      .from('friendships')
+      .select('id', { count: 'exact', head: true })
+      .eq('addressee_id', user.id)
+      .eq('status', 'pending');
+    setFriendRequests(incoming || 0);
 
     const { data: challenges } = await supabase
       .from('challenges')
@@ -202,19 +210,32 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.username}>@{username}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.notifBtn}
-            onPress={() => navigation.navigate('Notifications')}
-          >
-            <Text style={styles.notifIcon}>🔔</Text>
-            {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
-                  {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.notifBtn}
+              onPress={() => navigation.navigate('Friends', friendRequests > 0 ? { tab: 'requests' } : undefined)}
+            >
+              <Text style={styles.notifIcon}>👥</Text>
+              {friendRequests > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{friendRequests}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.notifBtn}
+              onPress={() => navigation.navigate('Notifications')}
+            >
+              <Text style={styles.notifIcon}>🔔</Text>
+              {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats Bar */}
@@ -382,6 +403,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.white, fontWeight: 'bold', fontSize: 18 },
   greeting: { color: colors.textSecondary, fontSize: 12 },

@@ -120,3 +120,31 @@ export async function notifyChallengeDeclined(challengerId, opponentUsername) {
     `@${opponentUsername} declined your challenge`
   );
 }
+
+export async function notifyFriendRequest(addresseeId, requesterUsername) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('push_token')
+    .eq('id', addresseeId)
+    .single();
+
+  await sendPushNotification(
+    data?.push_token,
+    '👥 Friend Request',
+    `@${requesterUsername} wants to be your friend on DuelFit`
+  );
+}
+
+export async function notifyFriendAccepted(requesterId, addresseeUsername) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('push_token')
+    .eq('id', requesterId)
+    .single();
+
+  await sendPushNotification(
+    data?.push_token,
+    '🤝 Friend Request Accepted',
+    `@${addresseeUsername} accepted — you can challenge them now`
+  );
+}

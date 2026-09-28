@@ -65,11 +65,7 @@ CREATE POLICY "challenges_select_participant"
   ON challenges FOR SELECT
   USING (auth.uid() = challenger_id OR auth.uid() = opponent_id);
 
--- Challenger can create a challenge (they must be the challenger)
-DROP POLICY IF EXISTS "challenges_insert_challenger" ON challenges;
-CREATE POLICY "challenges_insert_challenger"
-  ON challenges FOR INSERT
-  WITH CHECK (auth.uid() = challenger_id);
+-- challenges_insert_challenger is defined in 20260928000000_friendships_hardening.sql.
 
 -- Only participants can update; key operations are scoped further in app code.
 -- Note this lets a loser set proof_approved on their own lost challenge. That is
@@ -81,10 +77,8 @@ CREATE POLICY "challenges_update_participant"
   USING (auth.uid() = challenger_id OR auth.uid() = opponent_id);
 
 -- Only challenger can delete (cancel) a pending challenge
-DROP POLICY IF EXISTS "challenges_delete_challenger" ON challenges;
-CREATE POLICY "challenges_delete_challenger"
-  ON challenges FOR DELETE
-  USING (auth.uid() = challenger_id);
+-- challenges_delete_challenger is defined in 20260928000002_challenges_delete_policy.sql,
+-- limited to pending challenges.
 
 -- ============================================================
 -- FRIENDSHIPS
@@ -96,15 +90,9 @@ CREATE POLICY "friendships_select_participant"
   ON friendships FOR SELECT
   USING (auth.uid() = requester_id OR auth.uid() = addressee_id);
 
-DROP POLICY IF EXISTS "friendships_insert_own" ON friendships;
-CREATE POLICY "friendships_insert_own"
-  ON friendships FOR INSERT
-  WITH CHECK (auth.uid() = requester_id);
-
-DROP POLICY IF EXISTS "friendships_update_participant" ON friendships;
-CREATE POLICY "friendships_update_participant"
-  ON friendships FOR UPDATE
-  USING (auth.uid() = requester_id OR auth.uid() = addressee_id);
+-- friendships_insert_own and friendships_update_participant are defined in
+-- 20260928000000_friendships_hardening.sql. The versions that used to be here let
+-- a requester accept their own request, for the same OR reason as above.
 
 DROP POLICY IF EXISTS "friendships_delete_own" ON friendships;
 CREATE POLICY "friendships_delete_own"
