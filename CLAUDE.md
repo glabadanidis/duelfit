@@ -10,7 +10,10 @@ non trivial changes. This file is the conventions and the traps.
   comment, not in a migration. It belongs only in the Supabase edge function environment.
 - **Never remove the `.eq('status', 'accepted')` guard** on the settlement update in
   `supabase/functions/settle-challenges/index.ts`. It is the only thing preventing a double points
-  award when the hourly cron and a manual `MarkResult` overlap.
+  award when two settlement runs overlap.
+- **Results come only from the match feed.** Players cannot mark a winner, there is no screen for
+  it and the `challenges_guard_client_update` trigger rejects it. Do not bring back a manual result
+  screen, the owner explicitly removed it.
 - **This is not a gambling app and must never read like one.** No odds, no stakes in money, no
   "bet". The word used in the product is challenge or duel. Apple will reject it otherwise and the
   whole positioning depends on it.
@@ -75,6 +78,10 @@ non trivial changes. This file is the conventions and the traps.
   forces a recheck.
 - **`increment_points` and the profile creation trigger are not in this repo.** Do not assume the
   database is only what `supabase/migrations/` describes. It is not.
+- **`supabase.channel(name)` returns the existing channel if the name is taken.** Adding `.on()` to
+  one that is already subscribed throws. Realtime channels get a unique name per mount and a
+  `cancelled` flag for when the screen unmounts before `getUser()` resolves, as in Home and
+  Challenges. Copy that pattern for any new subscription.
 - **Do not run `supabase db push`.** The CLI's migration history does not match the live database.
   Apply a migration by pasting it into the Supabase SQL editor.
 - **RLS policies for the same command combine with OR**, and a missing policy returns zero rows

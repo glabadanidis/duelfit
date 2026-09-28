@@ -40,7 +40,7 @@ One row per user, `id` matches `auth.users.id`.
 | `id` | uuid, foreign key to `auth.users` |
 | `username` | unique case insensitively, enforced by the `profiles_username_lower_key` index |
 | `full_name` | set from signup metadata |
-| `points` | +10 per challenge won, incremented via the `increment_points` RPC |
+| `points` | +10 per challenge won, incremented via the `increment_points` RPC. Not writable by the user |
 | `push_token` | Expo push token, written by `savePushToken()` on every app open |
 | `forfeits_done` | forfeits completed as the loser, backfilled from approved proofs. Not yet written by the app |
 | `forfeits_ducked` | forfeits not done in time. Always 0 for now, nothing writes it yet |
@@ -93,8 +93,10 @@ can be challenged by searching their username.
 
 ### RPC
 
-`increment_points(user_id uuid, amount int)` is called from both `settle-challenges` and
-`MarkResult.js`. Its definition is **not in this repo**, it was created in the Supabase SQL editor.
+`increment_points(user_id uuid, amount int)` is called only from `settle-challenges`. Its
+definition is **not in this repo**, it was created in the Supabase SQL editor. Since
+`20260928000003` only `service_role` may execute it; before that any logged in user could give
+anyone any number of points.
 
 `username_available(check_username text)` returns a boolean and nothing else. It is
 `SECURITY DEFINER` and callable by `anon`, because Register runs before the account exists and anon
@@ -109,7 +111,7 @@ RLS is on for all three tables. What the live database actually has, verified 20
 | `profiles` | SELECT | `profiles_select_authenticated` | any logged in user, never anon |
 | `challenges` | SELECT | `Users can view own challenges` | participants only |
 | `challenges` | INSERT | `challenges_insert_challenger` | you are the challenger, and not also the opponent |
-| `challenges` | UPDATE | `Users can update challenges` | participants, any column. See [Known weaknesses](#known-weaknesses) |
+| `challenges` | UPDATE | `Users can update challenges` | participants, narrowed by the `challenges_guard_client_update` trigger, see below |
 | `challenges` | DELETE | `challenges_delete_challenger` | the challenger, while still `pending` |
 | `friendships` | SELECT | `friendships_select_participant` | either side |
 | `friendships` | INSERT | `friendships_insert_own` | you are the requester, not the addressee, status `pending` |
@@ -117,7 +119,16 @@ RLS is on for all three tables. What the live database actually has, verified 20
 | `friendships` | DELETE | `friendships_delete_own` | either side |
 
 On top of the UPDATE policy, `authenticated` has UPDATE privilege on `friendships.status` only, so
-accepting a request cannot also rewrite who it is between.
+accepting a request cannot also rewrite who it is between. Likewise on `profiles` it has UPDATE on
+`username`, `full_name` and `push_token` only, so nobody can write their own `points`.
+
+**Players never decide a result.** RLS cannot compare old and new values, so the
+`challenges_guard_client_update` BEFORE UPDATE trigger does it. For the `authenticated` and `anon`
+roles it allows exactly three changes: the opponent moving `pending` to `accepted` (with their pick)
+or `declined`; the loser adding or changing proof on a completed challenge until it is approved; the
+winner approving proof once there is some. Any other change, including `status = 'completed'`,
+`winner_id`, `result` or either pick after acceptance, is rejected with `42501`. `service_role`
+(settle-challenges) and the SQL editor pass straight through.
 
 Three things about Postgres RLS that have caused real bugs here:
 
@@ -162,7 +173,7 @@ Three things about Postgres RLS that have caused real bugs here:
       |    -> UPDATE status = 'completed', winner_id, result  |
       |    -> increment_points(winner, 10)                   |
       |                                                     |
-      |  MarkResult screen is the manual fallback            |
+      |  there is no manual result, players cannot set one   |
 ```
 
 The four wizard steps hold state in `challengeContext.js` (match, pick, forfeit, opponent) and only
@@ -194,8 +205,8 @@ The function:
 .eq('id', challenge.id).eq('status', 'accepted')   // <- this guard
 ```
 
-Only awarding points when that update returns a row is what stops a double award if the cron and a
-manual `MarkResult` race each other. Do not remove the `.eq('status', 'accepted')`.
+Only awarding points when that update returns a row is what stops a double award if two runs
+overlap, for example the cron and a manual invocation. Do not remove the `.eq('status', 'accepted')`.
 
 7. Swallows per challenge errors with `catch (_) {}` so one unparseable fixture cannot stop the
    batch. It also means **failures are silent**. There is no alerting on this.
@@ -273,14 +284,17 @@ maintained lookup tables. `F1_DRIVERS` needs editing every season.
 
 ## Navigation
 
-`src/navigation/index.js`. A native stack wrapping a four tab bottom navigator.
+`src/navigation/index.js`. A native stack wrapping a five tab bottom navigator.
 
-Friends is reached from the 👥 button in the Home header, which carries a badge with the number of
-incoming requests and opens straight on the Requests tab when there are any, and from the Profile
-quick links. The screen takes an optional `tab` param: `friends`, `requests` or `search`.
+The Friends screen is registered twice with the same component. `FriendsTab` is the bottom tab, and
+the Home 👥 button (badged with incoming requests) and the Profile quick link switch to it.
+`Friends` on the stack is only for Step4Opponent's "Find Friends", so the wizard stays underneath
+and Back returns to it with the draft intact. The screen hides its back arrow when it is the tab,
+and takes an optional `tab` param: `friends` or `requests`. The Friends tab has one search box
+that filters your friends and, from two characters, also lists other players to add.
 
-- **Tabs:** Home, Challenges, Leaderboard, Profile
-- **Stacked on top:** Notifications, the four wizard steps, AcceptPick, MarkResult, Friends,
+- **Tabs:** Home, Challenges, Leaderboard, Friends, Profile
+- **Stacked on top:** Notifications, the four wizard steps, AcceptPick, Friends,
   Settings, ChallengeDetail
 - **Unauthenticated stack:** Onboarding (first launch only), Login, Register, ForgotPassword,
   ConfirmEmail
@@ -316,7 +330,7 @@ applied by pasting it into the SQL editor, and that is the way to apply new ones
 
 1. **No `CREATE TABLE` for anything.** `profiles`, `challenges` and `friendships` were all created
    in the dashboard. There is no way to stand up a fresh environment from this repo today.
-2. **`increment_points` is not defined anywhere in the repo** but is called from two places.
+2. **`increment_points` is not defined anywhere in the repo** but settlement depends on it.
 3. **The `auth.users` trigger that creates a profile row is not in the repo.**
 4. **`20260604000000_rls_policies.sql` never ran.** Its friendships block used `user_id` and
    `friend_id`, which do not exist, so the whole file rolled back. The live policies were made by
@@ -333,6 +347,7 @@ Applied by hand in the SQL editor, in order, and verified:
 | `20260928000000_friendships_hardening.sql` | requests start pending, only the addressee accepts, one INSERT policy on `challenges` |
 | `20260928000001_friendships_one_row_per_pair.sql` | one friendship row per pair |
 | `20260928000002_challenges_delete_policy.sql` | lets the challenger cancel a pending challenge |
+| `20260928000003_results_only_from_feed.sql` | players cannot set results or points, `increment_points` is service role only |
 
 To see what is really there, in the SQL editor:
 
@@ -355,10 +370,9 @@ Worth knowing before you touch anything, in rough order of how much they matter.
   Sentry via `@sentry/react-native` is the obvious first addition.
 - **Settlement failures are silent** because of the `catch (_) {}` per challenge. A run that resolves
   nothing looks identical to a run with nothing to do.
-- **The `challenges` UPDATE policy lets either side update any column.** Nothing in the database
-  stops an opponent rewriting `challenger_pick` after the fact, or a loser setting `proof_approved`
-  on their own lost challenge. App code is not a security boundary. This has to be narrowed before
-  points are awarded at proof approval, or approval becomes a way to mint points.
+- **What a player may change on a challenge is enforced by a trigger, not by RLS.** If a new client
+  update is added (a new column, a new transition), `challenges_guard_client_update` has to allow it
+  or it fails with `42501`. That is intended: widen the trigger deliberately, never drop it.
 - **`src/components/` holds only `MatchRow`.** The rest of the card and row markup is still
   duplicated across screens, which is why `Challenges/Detail.js` is 541 lines.
 - **No tests of any kind.**

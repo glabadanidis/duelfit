@@ -183,14 +183,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
     ]);
   }
 
-  async function respondToChallenge(accept) {
-    const newStatus = accept ? 'accepted' : 'declined';
-    await supabase.from('challenges').update({ status: newStatus }).eq('id', challenge.id);
-    setChallenge(prev => ({ ...prev, status: newStatus }));
-  }
-
   const status = statusInfo(challenge.status);
-  const isOpponent = challenge.opponent_id === resolvedUserId;
   const isWinner   = challenge.winner_id === resolvedUserId;
   const isLoser    = challenge.status === 'completed' && challenge.winner_id && !isWinner;
   const isDraw     = challenge.status === 'completed' && !challenge.winner_id;
@@ -420,14 +413,12 @@ export default function ChallengeDetailScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Mark Result — shown to both participants on accepted challenges */}
-        {challenge.status === 'accepted' && (isChallenger || isOpponent) && (
-          <TouchableOpacity
-            style={styles.markResultBtn}
-            onPress={() => navigation.navigate('MarkResult', { challenge, currentUserId: resolvedUserId })}
-          >
-            <Text style={styles.markResultBtnText}>🏁 Mark Result</Text>
-          </TouchableOpacity>
+        {/* Nobody marks the result. settle-challenges reads it from the match feed,
+            and the database rejects a player trying to set it. */}
+        {challenge.status === 'accepted' && (
+          <View style={styles.autoResultNote}>
+            <Text style={styles.autoResultText}>⏱ The result is settled automatically from the official score after the match.</Text>
+          </View>
         )}
 
         {/* Timeline */}
@@ -530,8 +521,8 @@ const styles = StyleSheet.create({
   linkSubmitBtn: { backgroundColor: '#10B981', borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   linkSubmitText: { color: colors.white, fontWeight: '700', fontSize: 18 },
 
-  markResultBtn: { backgroundColor: colors.primary, borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 8 },
-  markResultBtnText: { color: colors.white, fontWeight: 'bold', fontSize: 16 },
+  autoResultNote: { backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
+  autoResultText: { color: colors.textSecondary, fontSize: 13, textAlign: 'center' },
   timelineRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   timelineLabel: { color: colors.textSecondary, fontSize: 13 },
   timelineValue: { color: colors.white, fontSize: 13, fontWeight: '500' },
