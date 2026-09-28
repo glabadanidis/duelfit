@@ -29,6 +29,14 @@
           "color": "#FF5722"
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "DuelFit uses your photos so you can upload proof that you completed a forfeit.",
+          "cameraPermission": "DuelFit uses your camera so you can take a photo or video as proof that you completed a forfeit.",
+          "microphonePermission": "DuelFit uses your microphone to record sound when you film a video as proof of a forfeit."
+        }
+      ],
       "expo-status-bar",
       [
         "expo-splash-screen",

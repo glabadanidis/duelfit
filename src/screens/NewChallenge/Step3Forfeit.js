@@ -41,7 +41,7 @@ export default function Step3Forfeit({ navigation }) {
         <Text style={styles.step}>3 of 4</Text>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
+      <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.sectionLabel}>Choose a forfeit for the loser:</Text>
 
         <View style={styles.grid}>
