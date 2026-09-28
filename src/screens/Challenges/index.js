@@ -143,16 +143,22 @@ export default function ChallengesScreen({ navigation }) {
     }, [])
   );
 
+  // Same guards as the Home subscription, see the comment there.
   useEffect(() => {
+    let cancelled = false;
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
+      if (cancelled || !user) return;
       realtimeSubRef.current = supabase
-        .channel('challenges-screen')
+        .channel(`challenges-screen:${user.id}:${Date.now()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges', filter: `opponent_id=eq.${user.id}` }, () => loadData())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges', filter: `challenger_id=eq.${user.id}` }, () => loadData())
         .subscribe();
     });
-    return () => { if (realtimeSubRef.current) supabase.removeChannel(realtimeSubRef.current); };
+    return () => {
+      cancelled = true;
+      if (realtimeSubRef.current) supabase.removeChannel(realtimeSubRef.current);
+      realtimeSubRef.current = null;
+    };
   }, []);
 
   async function loadData() {

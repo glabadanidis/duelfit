@@ -91,17 +91,26 @@ export default function HomeScreen({ navigation }) {
     await loadMatches(sports[0]?.leagues[0] || null);
   }
 
+  // Two things keep this from throwing "cannot add postgres_changes callbacks
+  // after subscribe()". supabase.channel() hands back an existing channel with the
+  // same name, so the name is unique per mount. And if the screen unmounts before
+  // getUser() resolves, which happens on logout and login, cancelled stops a
+  // channel being created that the cleanup has already missed.
   useEffect(() => {
     let sub;
+    let cancelled = false;
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
+      if (cancelled || !user) return;
       sub = supabase
-        .channel('home-challenges')
+        .channel(`home-challenges:${user.id}:${Date.now()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges', filter: `opponent_id=eq.${user.id}` }, () => loadUserData())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'challenges', filter: `challenger_id=eq.${user.id}` }, () => loadUserData())
         .subscribe();
     });
-    return () => { if (sub) supabase.removeChannel(sub); };
+    return () => {
+      cancelled = true;
+      if (sub) supabase.removeChannel(sub);
+    };
   }, []);
 
   async function loadUserData() {
@@ -213,7 +222,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.headerRight}>
             <TouchableOpacity
               style={styles.notifBtn}
-              onPress={() => navigation.navigate('Friends', friendRequests > 0 ? { tab: 'requests' } : undefined)}
+              onPress={() => navigation.navigate('FriendsTab', { tab: friendRequests > 0 ? 'requests' : 'friends' })}
             >
               <Text style={styles.notifIcon}>👥</Text>
               {friendRequests > 0 && (

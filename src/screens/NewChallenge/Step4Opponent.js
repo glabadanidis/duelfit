@@ -179,7 +179,7 @@ export default function Step4Opponent({ navigation }) {
             {friends.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptySubtext}>No friends yet. Search any username above to challenge someone, or add friends so they show up here.</Text>
-                <TouchableOpacity style={styles.findBtn} onPress={() => navigation.navigate('Friends', { tab: 'search' })}>
+                <TouchableOpacity style={styles.findBtn} onPress={() => navigation.navigate('Friends', { tab: 'friends' })}>
                   <Text style={styles.findBtnText}>+ Find Friends</Text>
                 </TouchableOpacity>
               </View>

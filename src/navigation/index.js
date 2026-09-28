@@ -20,7 +20,6 @@ import Step2Pick from '../screens/NewChallenge/Step2Pick';
 import Step3Forfeit from '../screens/NewChallenge/Step3Forfeit';
 import Step4Opponent from '../screens/NewChallenge/Step4Opponent';
 import AcceptPickScreen from '../screens/NewChallenge/AcceptPick';
-import MarkResultScreen from '../screens/NewChallenge/MarkResult';
 import FriendsScreen from '../screens/Friends';
 import SettingsScreen from '../screens/Settings';
 import ChallengeDetailScreen from '../screens/Challenges/Detail';
@@ -32,7 +31,7 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 function TabIcon({ name, focused }) {
-  const icons = { Home: '🏠', Challenges: '⚔️', Leaderboard: '🏆', Profile: '👤' };
+  const icons = { Home: '🏠', Challenges: '⚔️', Leaderboard: '🏆', FriendsTab: '👥', Profile: '👤' };
   return (
     <Text style={{ fontSize: focused ? 22 : 18, opacity: focused ? 1 : 0.5 }}>
       {icons[name]}
@@ -57,6 +56,11 @@ function MainTabs({ navigation }) {
         options={{ tabBarIcon: ({ focused }) => <TabIcon name="Challenges" focused={focused} /> }} />
       <Tab.Screen name="Leaderboard" component={LeaderboardScreen}
         options={{ tabBarIcon: ({ focused }) => <TabIcon name="Leaderboard" focused={focused} /> }} />
+      {/* FriendsTab, not Friends: the stack keeps its own Friends screen so that
+          Step4Opponent can open it on top of the wizard and come back with the
+          draft intact. Switching to a tab would pop the wizard off. */}
+      <Tab.Screen name="FriendsTab" component={FriendsScreen}
+        options={{ tabBarLabel: 'Friends', tabBarIcon: ({ focused }) => <TabIcon name="FriendsTab" focused={focused} /> }} />
       <Tab.Screen name="Profile" component={ProfileScreen}
         options={{ tabBarIcon: ({ focused }) => <TabIcon name="Profile" focused={focused} /> }} />
     </Tab.Navigator>
@@ -81,7 +85,6 @@ function RootStack({ session, onboardingDone, setOnboardingDone }) {
             <Stack.Screen name="Step3Forfeit" component={Step3Forfeit} />
             <Stack.Screen name="Step4Opponent" component={Step4Opponent} />
             <Stack.Screen name="AcceptPick" component={AcceptPickScreen} />
-            <Stack.Screen name="MarkResult" component={MarkResultScreen} />
             <Stack.Screen name="Friends" component={FriendsScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="ChallengeDetail" component={ChallengeDetailScreen} />

@@ -140,7 +140,7 @@ export default function ProfileScreen({ navigation }) {
 
         {/* Quick Links */}
         <View style={styles.quickLinks}>
-          <TouchableOpacity style={styles.quickLink} onPress={() => navigation.navigate('Friends')}>
+          <TouchableOpacity style={styles.quickLink} onPress={() => navigation.navigate('FriendsTab', { tab: 'friends' })}>
             <Text style={styles.quickLinkEmoji}>👥</Text>
             <Text style={styles.quickLinkText}>Friends</Text>
             <Text style={styles.quickLinkArrow}>›</Text>

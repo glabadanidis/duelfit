@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, ActivityIndicator, Alert, RefreshControl,
@@ -18,16 +18,26 @@ function Avatar({ username, size = 40, bg = colors.primary }) {
 }
 
 export default function FriendsScreen({ navigation, route }) {
-  const [tab, setTab] = useState(route?.params?.tab || 'friends'); // 'friends' | 'requests' | 'search'
+  const [tab, setTab] = useState(route?.params?.tab || 'friends'); // 'friends' | 'requests'
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const latestQuery = useRef('');
   const [userId, setUserId] = useState(null);
   const [myUsername, setMyUsername] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pendingIds, setPendingIds] = useState(new Set());
+  // As a tab the screen stays mounted, so the initial useState above only sees
+  // the first tab param. This picks up later ones, like the Home badge opening
+  // Requests.
+  useEffect(() => {
+    if (route?.params?.tab) setTab(route.params.tab);
+  }, [route?.params]);
+  // The same screen is a bottom tab and a stack screen opened from Step4Opponent.
+  // Only the stack version has anywhere to go back to.
+  const isTab = route?.name === 'FriendsTab';
 
   useFocusEffect(
     useCallback(() => {
@@ -78,16 +88,21 @@ export default function FriendsScreen({ navigation, route }) {
     setRefreshing(false);
   }
 
+  // One search box does both jobs: it filters your friends as you type, and from
+  // two characters on it also finds other players to add. latestQuery drops a
+  // slow response to an earlier keystroke so it cannot overwrite the current one.
   async function searchUsers(text) {
     setSearchText(text);
-    if (text.length < 2) { setSearchResults([]); return; }
+    const q = text.trim();
+    latestQuery.current = q;
+    if (q.length < 2) { setSearchResults([]); return; }
     const { data } = await supabase
       .from('profiles')
       .select('id, username, full_name')
-      .ilike('username', `%${text}%`)
+      .ilike('username', `%${q}%`)
       .neq('id', userId)
       .limit(10);
-    setSearchResults(data || []);
+    if (latestQuery.current === q) setSearchResults(data || []);
   }
 
   async function sendRequest(addresseeId) {
@@ -134,12 +149,67 @@ export default function FriendsScreen({ navigation, route }) {
   // request going the other way.
   const incomingByUser = new Map(requests.map(r => [r.profile?.id, r.id]));
 
+  const query = searchText.trim().toLowerCase();
+  const shownFriends = query
+    ? friends.filter(f =>
+        (f.profile?.username || '').toLowerCase().includes(query) ||
+        (f.profile?.full_name || '').toLowerCase().includes(query))
+    : friends;
+  const otherPlayers = query.length >= 2 ? searchResults.filter(u => !friendIds.has(u.id)) : [];
+
+  // Friends and other players share one list, so rows carry a kind and the two
+  // groups are separated by label rows.
+  const friendsTabRows = [
+    ...shownFriends.map(f => ({ kind: 'friend', key: f.id, friendshipId: f.id, profile: f.profile })),
+    ...(query.length >= 2
+      ? [{ kind: 'label', key: 'others-label', text: '🌍 Other players' },
+         ...(otherPlayers.length
+           ? otherPlayers.map(u => ({ kind: 'other', key: u.id, profile: u }))
+           : [{ kind: 'note', key: 'others-none', text: `No other players match "${searchText.trim()}"` }])]
+      : []),
+  ];
+
+  function renderFriendsTabRow({ item }) {
+    if (item.kind === 'label') return <Text style={styles.groupLabel}>{item.text}</Text>;
+    if (item.kind === 'note') return <Text style={styles.noMatch}>{item.text}</Text>;
+    const p = item.profile;
+    const incomingId = incomingByUser.get(p?.id);
+    return (
+      <View style={styles.row}>
+        <Avatar username={p?.username} />
+        <View style={styles.rowInfo}>
+          <Text style={styles.rowName}>{p?.full_name || p?.username}</Text>
+          <Text style={styles.rowSub}>@{p?.username}</Text>
+        </View>
+        {item.kind === 'friend' ? (
+          <TouchableOpacity style={styles.removeBtn} onPress={() => removeFriend(item.friendshipId)}>
+            <Text style={styles.removeBtnText}>Remove</Text>
+          </TouchableOpacity>
+        ) : incomingId ? (
+          <TouchableOpacity style={styles.acceptPill} onPress={() => acceptRequest(incomingId)}>
+            <Text style={styles.acceptPillText}>✓ Accept</Text>
+          </TouchableOpacity>
+        ) : pendingIds.has(p.id) ? (
+          <View style={styles.pendingBadge}>
+            <Text style={styles.pendingBadgeText}>Sent</Text>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.addBtn} onPress={() => sendRequest(p.id)}>
+            <Text style={styles.addBtnText}>+ Add</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹</Text>
-        </TouchableOpacity>
+        {isTab ? <View style={{ width: 36 }} /> : (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Text style={styles.backText}>‹</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.headerTitle}>👥 Friends</Text>
         <View style={{ width: 36 }} />
       </View>
@@ -149,7 +219,6 @@ export default function FriendsScreen({ navigation, route }) {
         {[
           { key: 'friends', label: `Friends${friends.length ? ` (${friends.length})` : ''}` },
           { key: 'requests', label: `Requests${requests.length ? ` (${requests.length})` : ''}` },
-          { key: 'search', label: 'Find' },
         ].map(t => (
           <TouchableOpacity
             key={t.key}
@@ -167,32 +236,39 @@ export default function FriendsScreen({ navigation, route }) {
         <>
           {/* FRIENDS TAB */}
           {tab === 'friends' && (
-            <FlatList
-              data={friends}
-              keyExtractor={item => item.id}
-              contentContainerStyle={styles.list}
-              showsVerticalScrollIndicator={false}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-              ListEmptyComponent={
-                <View style={styles.emptyCard}>
-                  <Text style={styles.emptyEmoji}>👥</Text>
-                  <Text style={styles.emptyText}>No friends yet</Text>
-                  <Text style={styles.emptySubtext}>Use "Find" tab to add friends</Text>
-                </View>
-              }
-              renderItem={({ item }) => (
-                <View style={styles.row}>
-                  <Avatar username={item.profile?.username} />
-                  <View style={styles.rowInfo}>
-                    <Text style={styles.rowName}>{item.profile?.full_name || item.profile?.username}</Text>
-                    <Text style={styles.rowSub}>@{item.profile?.username}</Text>
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search friends or add by username..."
+                placeholderTextColor={colors.textSecondary}
+                value={searchText}
+                onChangeText={searchUsers}
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+              />
+              <FlatList
+                data={friendsTabRows}
+                keyExtractor={item => item.key}
+                renderItem={renderFriendsTabRow}
+                contentContainerStyle={styles.listInSearch}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+                ListHeaderComponent={
+                  friends.length > 0 && query && shownFriends.length === 0
+                    ? <Text style={styles.noMatch}>No friend matches "{searchText.trim()}"</Text>
+                    : null
+                }
+                ListEmptyComponent={
+                  <View style={styles.emptyCard}>
+                    <Text style={styles.emptyEmoji}>👥</Text>
+                    <Text style={styles.emptyText}>No friends yet</Text>
+                    <Text style={styles.emptySubtext}>Type a username above to find someone and send a request</Text>
                   </View>
-                  <TouchableOpacity style={styles.removeBtn} onPress={() => removeFriend(item.id)}>
-                    <Text style={styles.removeBtnText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            />
+                }
+              />
+            </View>
           )}
 
           {/* REQUESTS TAB */}
@@ -229,64 +305,6 @@ export default function FriendsScreen({ navigation, route }) {
             />
           )}
 
-          {/* SEARCH TAB */}
-          {tab === 'search' && (
-            <View style={styles.searchContainer}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by username..."
-                placeholderTextColor={colors.textSecondary}
-                value={searchText}
-                onChangeText={searchUsers}
-                autoCapitalize="none"
-                autoFocus
-              />
-              <FlatList
-                data={searchResults}
-                keyExtractor={item => item.id}
-                contentContainerStyle={styles.list}
-                showsVerticalScrollIndicator={false}
-                ListEmptyComponent={
-                  searchText.length >= 2 ? (
-                    <View style={styles.emptyCard}>
-                      <Text style={styles.emptyText}>No users found</Text>
-                    </View>
-                  ) : null
-                }
-                renderItem={({ item }) => {
-                  const isFriend = friendIds.has(item.id);
-                  const isPending = pendingIds.has(item.id);
-                  const incomingId = incomingByUser.get(item.id);
-                  return (
-                    <View style={styles.row}>
-                      <Avatar username={item.username} />
-                      <View style={styles.rowInfo}>
-                        <Text style={styles.rowName}>{item.full_name || item.username}</Text>
-                        <Text style={styles.rowSub}>@{item.username}</Text>
-                      </View>
-                      {isFriend ? (
-                        <View style={styles.friendBadge}>
-                          <Text style={styles.friendBadgeText}>Friends</Text>
-                        </View>
-                      ) : incomingId ? (
-                        <TouchableOpacity style={styles.acceptPill} onPress={() => acceptRequest(incomingId)}>
-                          <Text style={styles.acceptPillText}>✓ Accept</Text>
-                        </TouchableOpacity>
-                      ) : isPending ? (
-                        <View style={styles.pendingBadge}>
-                          <Text style={styles.pendingBadgeText}>Sent</Text>
-                        </View>
-                      ) : (
-                        <TouchableOpacity style={styles.addBtn} onPress={() => sendRequest(item.id)}>
-                          <Text style={styles.addBtnText}>+ Add</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                }}
-              />
-            </View>
-          )}
         </>
       )}
     </SafeAreaView>
@@ -307,6 +325,9 @@ const styles = StyleSheet.create({
   tabTextActive: { color: colors.white },
 
   list: { paddingHorizontal: 20, paddingBottom: 20 },
+  listInSearch: { paddingBottom: 20 },
+  groupLabel: { color: colors.textSecondary, fontWeight: '700', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginTop: 12, marginBottom: 8 },
+  noMatch: { color: colors.textSecondary, fontSize: 13, marginBottom: 8 },
   searchContainer: { flex: 1, paddingHorizontal: 20 },
   searchInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, fontSize: 14, marginBottom: 12 },
 
@@ -327,8 +348,6 @@ const styles = StyleSheet.create({
   acceptPillText: { color: colors.white, fontWeight: '700', fontSize: 13 },
   addBtn: { backgroundColor: colors.primary, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
   addBtnText: { color: colors.white, fontWeight: '700', fontSize: 13 },
-  friendBadge: { backgroundColor: '#10B98122', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#10B981' },
-  friendBadgeText: { color: '#10B981', fontWeight: '700', fontSize: 12 },
   pendingBadge: { backgroundColor: '#F59E0B22', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#F59E0B' },
   pendingBadgeText: { color: '#F59E0B', fontWeight: '700', fontSize: 12 },
   removeBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
