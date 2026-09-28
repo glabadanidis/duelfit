@@ -108,12 +108,19 @@ for it. You can resend or manually confirm from the dashboard.
 edge function. Do not delete rows by hand, the function deletes the profile row and the auth user
 together and doing only one leaves an orphan.
 
-**"My username is taken."** Uniqueness is checked in the app, not enforced by a database constraint
-we can see in this repo. Duplicates are possible. Verify before telling anyone it is impossible:
+**"My username is taken."** Usernames are unique ignoring case, enforced by the
+`profiles_username_lower_key` index, so `Simeon` and `simeon` cannot both exist. Register checks
+through the `username_available()` function before signing up. To see who has it:
 
 ```sql
-select username, count(*) from profiles group by username having count(*) > 1;
+select id, username, created_at from profiles where lower(username) = lower('<name>');
 ```
+
+**"I cannot cancel my challenge."** Only the person who sent it can cancel, and only while it is
+still `pending`. Once the opponent has accepted it cannot be cancelled, by design.
+
+**"My friend request disappeared."** Declining deletes the request, there is no declined state, so
+the sender just sees it vanish. They can send a new one.
 
 **"I never got a notification."** Check the profile has a token:
 

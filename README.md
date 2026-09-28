@@ -99,11 +99,11 @@ supabase login
 supabase link --project-ref nofawxywnhqrqnwokkge
 supabase functions deploy settle-challenges
 supabase functions deploy delete-account
-supabase db push                              # applies anything new in supabase/migrations
 ```
 
-Read the warning in [ARCHITECTURE.md](ARCHITECTURE.md#known-gaps-in-the-migrations) before running
-`db push`. The migration history in this repo does not fully match the live database.
+**Do not use `supabase db push` here.** Apply a new migration by pasting the file into the Supabase
+SQL editor. The CLI's migration history does not match the live database, see
+[ARCHITECTURE.md](ARCHITECTURE.md#known-gaps-in-the-migrations).
 
 ## Store listing
 
@@ -124,9 +124,9 @@ src/
     notifications.js       Expo push registration and send helpers
     challengeContext.js    holds the in progress challenge across the 4 step wizard
     colors.js              the palette
-  components/              empty, nothing has been extracted yet
+  components/              MatchRow only, shared by Home and Step1Match
 supabase/
-  migrations/              4 SQL files, see the warning in ARCHITECTURE.md
+  migrations/              SQL applied by hand in the SQL editor, see ARCHITECTURE.md
   functions/               settle-challenges, delete-account
 assets/                    icon, splash, adaptive icon, favicon
 store-listing.md           App Store and Play copy

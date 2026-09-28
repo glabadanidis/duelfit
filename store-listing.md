@@ -44,7 +44,7 @@ Challenge accepted?
 ---
 
 ## Keywords (100 chars max — comma separated, no spaces after commas)
-sports,challenge,prediction,friends,football,forfeit,bet,duel,soccer,leaderboard,nba,fitness
+sports,challenge,prediction,friends,football,forfeit,rivalry,duel,soccer,leaderboard,nba,fitness
 
 ---
 

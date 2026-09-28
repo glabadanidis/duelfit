@@ -38,12 +38,17 @@ One row per user, `id` matches `auth.users.id`.
 | Column | Notes |
 |---|---|
 | `id` | uuid, foreign key to `auth.users` |
-| `username` | unique in practice, checked in the app not by a constraint we can see |
+| `username` | unique case insensitively, enforced by the `profiles_username_lower_key` index |
 | `full_name` | set from signup metadata |
-| `email` | |
 | `points` | +10 per challenge won, incremented via the `increment_points` RPC |
 | `push_token` | Expo push token, written by `savePushToken()` on every app open |
-| `avatar_url` | set by the Profile screen via expo-image-picker |
+| `forfeits_done` | forfeits completed as the loser, backfilled from approved proofs. Not yet written by the app |
+| `forfeits_ducked` | forfeits not done in time. Always 0 for now, nothing writes it yet |
+
+There is no `email` column (the address lives in `auth.users`) and no `avatar_url` column.
+
+Only logged in users can read `profiles`. Anonymous callers get nothing, see
+[Row level security](#row-level-security).
 
 Rows are created by a **database trigger on `auth.users`**, not by the app. `Register.js` passes
 `full_name` and `username` in `options.data` of `signUp()` and never inserts into `profiles`.
@@ -77,15 +82,51 @@ grouping, not a database value. `active` means `pending` or `accepted`.
 | `id` | uuid |
 | `requester_id` | who sent the request |
 | `addressee_id` | who received it |
-| `status` | `pending` or `accepted` |
+| `status` | `pending` (the default) or `accepted` |
 
-**The app uses `requester_id` and `addressee_id`. The RLS migration uses `user_id` and `friend_id`.**
-Those cannot both be right. See [Known gaps](#known-gaps-in-the-migrations).
+Declining a request or removing a friend deletes the row, there is no `declined` state. The
+`friendships_pair_key` unique index allows one row per pair of people whichever direction it was
+sent in, so A and B cannot both have a pending request to each other.
+
+Friends are a shortcut, not a gate. They are listed first when picking an opponent, but any player
+can be challenged by searching their username.
 
 ### RPC
 
 `increment_points(user_id uuid, amount int)` is called from both `settle-challenges` and
 `MarkResult.js`. Its definition is **not in this repo**, it was created in the Supabase SQL editor.
+
+`username_available(check_username text)` returns a boolean and nothing else. It is
+`SECURITY DEFINER` and callable by `anon`, because Register runs before the account exists and anon
+cannot read `profiles`. Defined in `20260924000000_close_profiles_read_hole.sql`.
+
+## Row level security
+
+RLS is on for all three tables. What the live database actually has, verified 2026-09-28:
+
+| Table | Command | Policy | Rule |
+|---|---|---|---|
+| `profiles` | SELECT | `profiles_select_authenticated` | any logged in user, never anon |
+| `challenges` | SELECT | `Users can view own challenges` | participants only |
+| `challenges` | INSERT | `challenges_insert_challenger` | you are the challenger, and not also the opponent |
+| `challenges` | UPDATE | `Users can update challenges` | participants, any column. See [Known weaknesses](#known-weaknesses) |
+| `challenges` | DELETE | `challenges_delete_challenger` | the challenger, while still `pending` |
+| `friendships` | SELECT | `friendships_select_participant` | either side |
+| `friendships` | INSERT | `friendships_insert_own` | you are the requester, not the addressee, status `pending` |
+| `friendships` | UPDATE | `friendships_update_participant` | addressee only, `pending` to `accepted` only |
+| `friendships` | DELETE | `friendships_delete_own` | either side |
+
+On top of the UPDATE policy, `authenticated` has UPDATE privilege on `friendships.status` only, so
+accepting a request cannot also rewrite who it is between.
+
+Three things about Postgres RLS that have caused real bugs here:
+
+- **Policies for the same command combine with OR.** A strict policy sitting next to a loose one
+  does nothing. When tightening, drop every policy for that command, not just the one you know.
+- **A policy with no `TO` clause applies to every role, including `anon`.** That is how `profiles`
+  was readable without logging in until 2026-09-24.
+- **No policy means zero rows, not an error.** Until 2026-09-28 `challenges` had no DELETE policy,
+  so Cancel Challenge reported success and deleted nothing.
 
 ## Challenge lifecycle
 
@@ -95,7 +136,7 @@ Those cannot both be right. See [Known gaps](#known-gaps-in-the-migrations).
       |  Step1Match   pick a league, pick a fixture          |
       |  Step2Pick    pick a side                            |
       |  Step3Forfeit type the forfeit                       |
-      |  Step4Opponent pick a friend                         |
+      |  Step4Opponent friends first, or any username        |
       |                                                     |
       +--> INSERT challenges  status = 'pending' -----------+
       |    notifyChallengeSent() to opponent push_token     |
@@ -109,6 +150,9 @@ Those cannot both be right. See [Known gaps](#known-gaps-in-the-migrations).
       |                                                     |
       |      or UPDATE status = 'declined'                   |
       |      notifyChallengeDeclined()                       |
+      |                                                     |
+      |  while pending the challenger can cancel,            |
+      |  which DELETEs the row                               |
       |                                                     |
       =========== match is played ===========================
       |                                                     |
@@ -231,6 +275,10 @@ maintained lookup tables. `F1_DRIVERS` needs editing every season.
 
 `src/navigation/index.js`. A native stack wrapping a four tab bottom navigator.
 
+Friends is reached from the 👥 button in the Home header, which carries a badge with the number of
+incoming requests and opens straight on the Requests tab when there are any, and from the Profile
+quick links. The screen takes an optional `tab` param: `friends`, `requests` or `search`.
+
 - **Tabs:** Home, Challenges, Leaderboard, Profile
 - **Stacked on top:** Notifications, the four wizard steps, AcceptPick, MarkResult, Friends,
   Settings, ChallengeDetail
@@ -243,8 +291,15 @@ The auth gate is a session check, so signing out re-renders straight back to the
 
 `src/constants/notifications.js`. `savePushToken()` registers with Expo, needs the hardcoded
 `projectId`, and writes the token onto the user's profile row. `notifyChallengeSent`,
-`notifyChallengeAccepted` and `notifyChallengeDeclined` read the target's `push_token` and POST
-straight to `https://exp.host/--/api/v2/push/send`.
+`notifyChallengeAccepted`, `notifyChallengeDeclined`, `notifyFriendRequest` and
+`notifyFriendAccepted` read the target's `push_token` and POST straight to
+`https://exp.host/--/api/v2/push/send`.
+
+Because the client does the send, any logged in user can read every other user's `push_token`.
+Moving the send server side is what would let that column be closed.
+
+Android push does not work yet: there is no `google-services.json` and no FCM key on EAS, and
+`savePushToken()` swallows the resulting error silently.
 
 The Notifications screen is not a notifications table. It queries `challenges` with an
 `or(challenger_id.eq..., opponent_id.eq...)` and renders the recent ones. There is no read state
@@ -252,31 +307,42 @@ and no notification history.
 
 ## Known gaps in the migrations
 
-The four files in `supabase/migrations/` are not a complete description of the live database. Things
-were created in the Supabase SQL editor and never written back. **Before running `supabase db push`
-against production, confirm what is actually there.**
+The files in `supabase/migrations/` are not a complete description of the live database. Things
+were created in the Supabase SQL editor and never written back.
+
+**Do not run `supabase db push` against this project.** The CLI's migration history does not match
+what was actually applied, so it would try to rerun old files. Every migration since 2026-09-24 was
+applied by pasting it into the SQL editor, and that is the way to apply new ones.
 
 1. **No `CREATE TABLE` for anything.** `profiles`, `challenges` and `friendships` were all created
    in the dashboard. There is no way to stand up a fresh environment from this repo today.
 2. **`increment_points` is not defined anywhere in the repo** but is called from two places.
 3. **The `auth.users` trigger that creates a profile row is not in the repo.**
-4. **The friendships RLS policies reference `user_id` and `friend_id`, but the app reads and writes
-   `requester_id` and `addressee_id`.** If the table really has `requester_id`, then
-   `20260604000000_rls_policies.sql` failed when it reached those statements, which in Postgres means
-   the whole file rolled back and **none of the RLS policies in it exist, on any of the three
-   tables**. Check this first, it is a data exposure question, not a tidiness question.
+4. **`20260604000000_rls_policies.sql` never ran.** Its friendships block used `user_id` and
+   `friend_id`, which do not exist, so the whole file rolled back. The live policies were made by
+   hand instead. The file has since been corrected so it converges if rerun, and the policies it
+   used to define loosely now live in the 2026-09 files, but the `challenges` SELECT and UPDATE
+   policies on the live database are still the dashboard-made ones.
 
-Verify with, in the Supabase SQL editor:
+Applied by hand in the SQL editor, in order, and verified:
+
+| File | What it does |
+|---|---|
+| `20260924000000_close_profiles_read_hole.sql` | `profiles` readable by logged in users only, adds `username_available()` and the forfeit counters |
+| `20260924000001_policy_cleanup_and_backfill.sql` | drops duplicate friendships policies, case insensitive username index, backfills `forfeits_done` |
+| `20260928000000_friendships_hardening.sql` | requests start pending, only the addressee accepts, one INSERT policy on `challenges` |
+| `20260928000001_friendships_one_row_per_pair.sql` | one friendship row per pair |
+| `20260928000002_challenges_delete_policy.sql` | lets the challenger cancel a pending challenge |
+
+To see what is really there, in the SQL editor:
 
 ```sql
-select tablename, policyname from pg_policies where schemaname = 'public';
+select tablename, cmd, policyname from pg_policies where schemaname = 'public' order by 1, 2;
 select table_name, column_name from information_schema.columns
   where table_name in ('profiles','challenges','friendships') order by table_name, ordinal_position;
 select routine_name from information_schema.routines where routine_name = 'increment_points';
 select jobname, schedule from cron.job;
 ```
-
-Then write what is actually there back into a migration so the two match.
 
 ## Known weaknesses
 
@@ -289,10 +355,10 @@ Worth knowing before you touch anything, in rough order of how much they matter.
   Sentry via `@sentry/react-native` is the obvious first addition.
 - **Settlement failures are silent** because of the `catch (_) {}` per challenge. A run that resolves
   nothing looks identical to a run with nothing to do.
-- **`challenges_update_participant` lets either side update any column.** The comment in the
-  migration says "key operations are scoped further in app code", which means the database is not
-  actually stopping an opponent from rewriting `challenger_pick` after the fact. App code is not a
-  security boundary.
+- **The `challenges` UPDATE policy lets either side update any column.** Nothing in the database
+  stops an opponent rewriting `challenger_pick` after the fact, or a loser setting `proof_approved`
+  on their own lost challenge. App code is not a security boundary. This has to be narrowed before
+  points are awarded at proof approval, or approval becomes a way to mint points.
 - **`src/components/` holds only `MatchRow`.** The rest of the card and row markup is still
   duplicated across screens, which is why `Challenges/Detail.js` is 541 lines.
 - **No tests of any kind.**

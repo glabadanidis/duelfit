@@ -67,20 +67,22 @@ fixed, so you do not "fix" it again.
 **The repo is not a complete description of the live system.** Tables, the `increment_points`
 function and the trigger that creates a profile row on signup were all created in the Supabase
 dashboard and never written back into a migration. You cannot stand up a fresh environment from this
-repo today. Before running `supabase db push` against production, read
-[Known gaps in the migrations](ARCHITECTURE.md#known-gaps-in-the-migrations).
+repo today. **Never run `supabase db push` against this project**, apply migrations by pasting them
+into the SQL editor. Read [Known gaps in the migrations](ARCHITECTURE.md#known-gaps-in-the-migrations)
+for why.
 
-There is also a live inconsistency to check on day one, in that section: the friendships RLS policies
-reference `user_id` and `friend_id` while the app uses `requester_id` and `addressee_id`. If the
-migration failed when it hit those statements, it rolled back, and **none** of the RLS policies exist
-on any table. That is a data exposure question. Confirm it before anything else.
+The original RLS migration never ran, because it referenced friendships columns that do not exist.
+That was found and fixed in September 2026: anonymous reads of `profiles` are closed and the
+friendships and challenges policies were rebuilt. The table of what is live now is in
+[Row level security](ARCHITECTURE.md#row-level-security).
 
 ## What to pick up first
 
 Roughly in the order they unblock the launch. First three are yours to own if you want them.
 
-1. **Reconcile the database with the migrations.** Run the four verification queries in ARCHITECTURE
-   and write what is actually there into a migration. Everything else is guesswork until this is done.
+1. **Finish reconciling the database with the migrations.** The policies are now written down, but
+   the tables, `increment_points` and the signup trigger still are not. Run the verification
+   queries in ARCHITECTURE and write what is there into a migration.
 2. **Add Sentry.** `@sentry/react-native`. Right now a crash on a user's phone is invisible to us and
    support has nothing to work from.
 3. **Move push notification sending server side**, into a database trigger or an edge function.

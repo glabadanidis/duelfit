@@ -75,6 +75,14 @@ non trivial changes. This file is the conventions and the traps.
   forces a recheck.
 - **`increment_points` and the profile creation trigger are not in this repo.** Do not assume the
   database is only what `supabase/migrations/` describes. It is not.
+- **Do not run `supabase db push`.** The CLI's migration history does not match the live database.
+  Apply a migration by pasting it into the Supabase SQL editor.
+- **RLS policies for the same command combine with OR**, and a missing policy returns zero rows
+  rather than an error. Tightening means dropping every policy for that command, not adding a
+  stricter one next to it. A delete or update that "succeeds" but changes nothing is usually a
+  missing policy. The live policy table is in ARCHITECTURE.md.
+- **Challenges are open to anyone, friends are only listed first.** Do not add a friendship check to
+  the challenges INSERT policy, that was tried and explicitly rejected.
 - **`src/components/` holds only `MatchRow`**, the date and kick off block plus the two team rows,
   shared by Home and Step1Match. If you are about to copy a card into a third screen, extract it
   instead. That is how the two largest files got that big.
