@@ -28,12 +28,14 @@ export default function RegisterScreen({ navigation }) {
     setUsernameStatus('checking');
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id')
-        .ilike('username', username)
-        .maybeSingle();
-      setUsernameStatus(data ? 'taken' : 'available');
+      // Goes through an RPC rather than reading profiles, because this runs before
+      // the account exists and so runs as anon, and anon can no longer read the
+      // table. The function returns a boolean and nothing else.
+      const { data: free, error } = await supabase
+        .rpc('username_available', { check_username: username });
+      // A failed check must not claim the name is free, and must not block a name
+      // that is free. null shows no hint and leaves handleRegister to decide.
+      setUsernameStatus(error ? null : free ? 'available' : 'taken');
     }, 500);
   }, [username]);
 
@@ -57,6 +59,17 @@ export default function RegisterScreen({ navigation }) {
       return Alert.alert('Please wait', 'Checking username availability...');
     }
     setLoading(true);
+    // The debounced check above can be up to 500ms stale and the name can be taken
+    // in between, so this is the one that decides. Compared against false on
+    // purpose: if the call itself failed, do not block a possibly free name, let
+    // profiles_username_lower_key be the last line of defence.
+    const { data: free } = await supabase
+      .rpc('username_available', { check_username: username });
+    if (free === false) {
+      setLoading(false);
+      setUsernameStatus('taken');
+      return Alert.alert('Error', 'This username is already taken.');
+    }
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -68,7 +81,7 @@ export default function RegisterScreen({ navigation }) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
       <Text style={styles.logo}>DUELFIT</Text>
       <Text style={styles.title}>Create Account</Text>
       <Text style={styles.subtitle}>Join the challenge</Text>
