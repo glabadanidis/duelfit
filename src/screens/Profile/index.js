@@ -85,9 +85,6 @@ export default function ProfileScreen({ navigation }) {
           </View>
           <Text style={styles.fullName}>{profile?.full_name || 'Player'}</Text>
           <Text style={styles.username}>@{profile?.username}</Text>
-          <View style={styles.pointsBadge}>
-            <Text style={styles.pointsText}>⚡ {profile?.points || 0} points</Text>
-          </View>
         </View>
 
         {/* Stats Grid */}
@@ -177,8 +174,6 @@ const styles = StyleSheet.create({
   avatarText: { color: colors.white, fontWeight: 'bold', fontSize: 34 },
   fullName: { color: colors.white, fontWeight: 'bold', fontSize: 22, marginBottom: 4 },
   username: { color: colors.textSecondary, fontSize: 15, marginBottom: 12 },
-  pointsBadge: { backgroundColor: colors.primary + '22', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6, borderWidth: 1, borderColor: colors.primary },
-  pointsText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
 
   statsGrid: { flexDirection: 'row', marginHorizontal: 20, gap: 10, marginBottom: 16 },
   statCard: { flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: colors.border },

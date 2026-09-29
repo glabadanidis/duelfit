@@ -8,10 +8,19 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import colors from '../../constants/colors';
 
-function formatDate(dateStr) {
+// match_date is the fixture's calendar date with no kick off time, so this counts
+// whole days. Parsed as a local date: new Date('2026-10-04') would be UTC midnight
+// and could land on the day before.
+function startsIn(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((new Date(y, m - 1, d) - today) / (24 * 60 * 60 * 1000));
+  if (days < 0) return 'Waiting for the result';
+  if (days === 0) return 'Starts today';
+  if (days === 1) return 'Starts tomorrow';
+  return `Starts in ${days} days`;
 }
 
 function ActiveChallengeCard({ item, currentUserId, onAccept, onDecline, onCancel, onPress }) {
@@ -32,7 +41,7 @@ function ActiveChallengeCard({ item, currentUserId, onAccept, onDecline, onCance
           <Text style={styles.cardTitle}>
             {isReceived ? `⚔️ vs @${otherUser}` : `📤 @${otherUser}`}
           </Text>
-          <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
+          <Text style={styles.cardDate}>{startsIn(item.match_date)}</Text>
         </View>
         <View style={[styles.badge, { backgroundColor: statusColor + '22', borderColor: statusColor }]}>
           <Text style={[styles.badgeText, { color: statusColor }]}>{statusLabel}</Text>
@@ -96,9 +105,8 @@ function CompletedChallengeCard({ item, currentUserId, onPress }) {
         </View>
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.cardTitle}>
-            {isReceived ? `vs @${otherUser}` : `vs @${otherUser}`}
+            vs @{otherUser}
           </Text>
-          <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
         </View>
         <View style={[styles.badge, { backgroundColor: resultColor + '22', borderColor: resultColor }]}>
           <Text style={[styles.badgeText, { color: resultColor }]}>{resultLabel}</Text>
@@ -132,6 +140,7 @@ function CompletedChallengeCard({ item, currentUserId, onPress }) {
 export default function ChallengesScreen({ navigation }) {
   const [userId, setUserId] = useState(null);
   const [challenges, setChallenges] = useState([]);
+  // Labelled In progress and History: "Open" read like a public duel anyone can join
   const [tab, setTab] = useState('active'); // 'active' | 'completed'
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -245,7 +254,7 @@ export default function ChallengesScreen({ navigation }) {
           onPress={() => setTab('active')}
         >
           <Text style={[styles.tabText, tab === 'active' && styles.tabTextActive]}>
-            Open / Active {pendingCount > 0 ? `(${pendingCount})` : ''}
+            In progress {pendingCount > 0 ? `(${pendingCount})` : ''}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -253,7 +262,7 @@ export default function ChallengesScreen({ navigation }) {
           onPress={() => setTab('completed')}
         >
           <Text style={[styles.tabText, tab === 'completed' && styles.tabTextActive]}>
-            Completed {completedChallenges.length > 0 ? `(${completedChallenges.length})` : ''}
+            History {completedChallenges.length > 0 ? `(${completedChallenges.length})` : ''}
           </Text>
         </TouchableOpacity>
       </View>
@@ -271,7 +280,7 @@ export default function ChallengesScreen({ navigation }) {
             <View style={styles.emptyCard}>
               <Text style={styles.emptyEmoji}>{tab === 'active' ? '⚔️' : '🏆'}</Text>
               <Text style={styles.emptyText}>
-                {tab === 'active' ? 'No active challenges' : 'No completed challenges yet'}
+                {tab === 'active' ? 'Nothing in progress' : 'No history yet'}
               </Text>
               <Text style={styles.emptySubtext}>
                 {tab === 'active' ? 'Go to Home and challenge someone!' : 'Finish a challenge to see results here'}

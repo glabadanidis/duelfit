@@ -79,8 +79,10 @@ The core table.
 | `proof_rejected_at`, `proof_rejections` | stamped by the same trigger when the winner rejects proof, at most 2 rejections |
 | `created_at` | |
 
-`status` is the whole state machine. The Challenges screen's `active` and `completed` tabs are a UI
-grouping, not a database value. `active` means `pending` or `accepted`.
+`status` is the whole state machine. The Challenges screen's tabs, In progress and History (`active`
+and `completed` in the code), are a UI grouping, not a database value. `active` means `pending` or
+`accepted`, and those cards show "Starts in X days" counted in calendar days from `match_date`,
+since no kick off time is stored. History holds `completed` and `declined`.
 
 ### `friendships`
 
@@ -349,7 +351,7 @@ maintained lookup tables. `F1_DRIVERS` needs editing every season.
 **Points are hidden, not removed.** They are still awarded by `challenges_rewards` and stored in
 `profiles.points`, but Home no longer shows them and the Leaderboard tab is off. The Leaderboard
 screen is still registered on the stack with nothing linking to it; putting its `Tab.Screen` back
-restores it. Profile and Challenge Detail still mention points.
+restores it. Profile no longer shows them either; only Challenge Detail's texts still mention points.
 
 The Friends screen is registered twice with the same component. `FriendsTab` is the bottom tab, and
 the Profile quick link switches to it. Home has no Friends button any more.
@@ -358,8 +360,10 @@ and Back returns to it with the draft intact. The screen hides its back arrow wh
 and takes an optional `tab` param: `friends` or `requests`. The Friends tab has one search box
 that filters your friends and, from two characters, also lists other players to add. Rows show the
 username in bold with the reliability word under it, no full name. Each friend on the tab has a ⚔️
-button that resets the wizard, puts that friend in `challenge.opponent` and opens Step1Match, so the
-friend is already selected in Step4Opponent. The stack copy has no ⚔️, a reset there would wipe the
+button, and so does every player found under Other players, since anyone can be challenged. It resets
+the wizard, puts that player in `challenge.opponent` and opens Step1Match, so they are already
+selected in Step4Opponent, which lists a non-friend under "Chosen opponent". The Invite Friends
+button under the search box has no action yet. The stack copy has no ⚔️, a reset there would wipe the
 draft underneath. Home's match cards clear `opponent` so a stale one cannot carry over.
 
 - **Tabs:** Home, Challenges, Friends, Profile

@@ -29,7 +29,7 @@ No money. No betting. Just real physical forfeits.
 **FEATURES**
 
 ⚔️ Challenge any friend on any upcoming match
-🏆 Leaderboard — see who rules your circle
+✅ Reliability rating — see who actually does their forfeits
 📊 Track your wins, losses, and win rate
 🔔 Instant notifications when challenges are sent or accepted
 📅 Live match schedule across multiple leagues
@@ -44,12 +44,12 @@ Challenge accepted?
 ---
 
 ## Keywords (100 chars max — comma separated, no spaces after commas)
-sports,challenge,prediction,friends,football,forfeit,rivalry,duel,soccer,leaderboard,nba,fitness
+sports,challenge,prediction,friends,football,forfeit,rivalry,duel,soccer,accountability,nba,fitness
 
 ---
 
 ## What's New (Version 1.0)
-Initial release. Challenge your friends on any upcoming match across the top football and basketball leagues. Set physical forfeits, track your record, and climb the leaderboard.
+Initial release. Challenge your friends on any upcoming match across the top football and basketball leagues. Set physical forfeits, track your record, and prove you keep your word.
 
 ---
 
@@ -68,7 +68,7 @@ Use the iOS Simulator or a real device with Expo Go / dev build.
 
 ### Screenshot 1 — Home Feed
 **Screen:** Home tab
-**What to show:** Upcoming matches visible, stats bar showing points/wins, league filter chips
+**What to show:** Upcoming matches visible, the record and reliability bar, league filter chips
 **Caption overlay (optional):** "Pick a match. Start a duel."
 
 ### Screenshot 2 — Create Challenge
@@ -86,10 +86,10 @@ Use the iOS Simulator or a real device with Expo Go / dev build.
 **What to show:** A list of pending and active challenges with opponent names
 **Caption overlay:** "Track every duel."
 
-### Screenshot 5 — Leaderboard
-**Screen:** Leaderboard tab
-**What to show:** Ranked list of players with points
-**Caption overlay:** "Climb the ranks."
+### Screenshot 5 — Friends
+**Screen:** Friends tab
+**What to show:** Friends with their reliability ratings and the ⚔️ challenge button on each row
+**Caption overlay:** "Who keeps their word?"
 
 ---
 

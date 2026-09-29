@@ -80,6 +80,9 @@ export default function Step4Opponent({ navigation }) {
     : friends;
   const friendIds = new Set(friends.map(u => u.id));
   const otherPlayers = query.length >= 2 ? others.filter(u => !friendIds.has(u.id)) : [];
+  // A player challenged from the Friends tab search is not a friend and would not
+  // be in either list, so they are shown on their own until someone else is picked.
+  const chosenElsewhere = opponent && !friendIds.has(opponent.id) && !otherPlayers.some(u => u.id === opponent.id);
 
   function renderUser(u) {
     return (
@@ -180,6 +183,12 @@ export default function Step4Opponent({ navigation }) {
           <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
         ) : (
           <>
+            {chosenElsewhere && (
+              <>
+                <Text style={styles.groupLabel}>🎯 Chosen opponent</Text>
+                {renderUser(opponent)}
+              </>
+            )}
             <Text style={styles.groupLabel}>👥 Friends</Text>
             {friends.length === 0 ? (
               <View style={styles.emptyCard}>

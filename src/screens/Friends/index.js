@@ -160,10 +160,11 @@ export default function FriendsScreen({ navigation, route }) {
     ]);
   }
 
-  // Starts the wizard with this friend already chosen as the opponent, then the
-  // match, pick and forfeit as usual. Only from the tab: the stack copy of this
-  // screen sits on top of a wizard in progress, and a reset would wipe its draft.
-  function challengeFriend(profile) {
+  // Starts the wizard with this player already chosen as the opponent, then the
+  // match, pick and forfeit as usual. Friend or not, anyone can be challenged.
+  // Only from the tab: the stack copy of this screen sits on top of a wizard in
+  // progress, and a reset would wipe its draft.
+  function challengePlayer(profile) {
     resetChallenge();
     updateChallenge({ opponent: profile });
     navigation.navigate('Step1Match');
@@ -203,34 +204,34 @@ export default function FriendsScreen({ navigation, route }) {
       <View style={styles.row}>
         <Avatar username={p?.username} />
         <PersonInfo profile={p} />
-        {item.kind === 'friend' ? (
-          <View style={styles.friendActions}>
-            {isTab && (
-              <TouchableOpacity
-                style={styles.challengeBtn}
-                onPress={() => challengeFriend(p)}
-                accessibilityLabel={`Challenge ${p?.username}`}
-              >
-                <Text style={styles.challengeBtnIcon}>⚔️</Text>
-              </TouchableOpacity>
-            )}
+        <View style={styles.rowActions}>
+          {isTab && (
+            <TouchableOpacity
+              style={styles.challengeBtn}
+              onPress={() => challengePlayer(p)}
+              accessibilityLabel={`Challenge ${p?.username}`}
+            >
+              <Text style={styles.challengeBtnIcon}>⚔️</Text>
+            </TouchableOpacity>
+          )}
+          {item.kind === 'friend' ? (
             <TouchableOpacity style={styles.removeBtn} onPress={() => removeFriend(item.friendshipId)}>
               <Text style={styles.removeBtnText}>Remove</Text>
             </TouchableOpacity>
-          </View>
-        ) : incomingId ? (
-          <TouchableOpacity style={styles.acceptPill} onPress={() => acceptRequest(incomingId)}>
-            <Text style={styles.acceptPillText}>✓ Accept</Text>
-          </TouchableOpacity>
-        ) : pendingIds.has(p.id) ? (
-          <View style={styles.pendingBadge}>
-            <Text style={styles.pendingBadgeText}>Sent</Text>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.addBtn} onPress={() => sendRequest(p.id)}>
-            <Text style={styles.addBtnText}>+ Add</Text>
-          </TouchableOpacity>
-        )}
+          ) : incomingId ? (
+            <TouchableOpacity style={styles.acceptPill} onPress={() => acceptRequest(incomingId)}>
+              <Text style={styles.acceptPillText}>✓ Accept</Text>
+            </TouchableOpacity>
+          ) : pendingIds.has(p.id) ? (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>Sent</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.addBtn} onPress={() => sendRequest(p.id)}>
+              <Text style={styles.addBtnText}>+ Add</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   }
@@ -280,6 +281,10 @@ export default function FriendsScreen({ navigation, route }) {
                 autoCorrect={false}
                 clearButtonMode="while-editing"
               />
+              {/* No action yet, inviting people who are not on DuelFit is still to be built */}
+              <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.8}>
+                <Text style={styles.inviteBtnText}>✉️ Invite Friends</Text>
+              </TouchableOpacity>
               <FlatList
                 data={friendsTabRows}
                 keyExtractor={item => item.key}
@@ -368,7 +373,9 @@ const styles = StyleSheet.create({
   rowName: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
   subRow: { flexDirection: 'row', marginTop: 4 },
 
-  friendActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  inviteBtn: { backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 12 },
+  inviteBtnText: { color: colors.white, fontWeight: 'bold', fontSize: 14 },
   challengeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   challengeBtnIcon: { fontSize: 16 },
 
