@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import { notifyFriendRequest, notifyFriendAccepted } from '../../constants/notifications';
+import { useChallenge } from '../../constants/challengeContext';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
@@ -18,7 +19,21 @@ function Avatar({ username, size = 40, bg = colors.primary }) {
   );
 }
 
+// Username in bold with the reliability word under it. No full name: for most
+// players it is the username again and the row read twice.
+function PersonInfo({ profile }) {
+  return (
+    <View style={styles.rowInfo}>
+      <Text style={styles.rowName} numberOfLines={1}>{profile?.username}</Text>
+      <View style={styles.subRow}>
+        <ReliabilityBadge done={profile?.forfeits_done} ducked={profile?.forfeits_ducked} username={profile?.username} />
+      </View>
+    </View>
+  );
+}
+
 export default function FriendsScreen({ navigation, route }) {
+  const { resetChallenge, updateChallenge } = useChallenge();
   const [tab, setTab] = useState(route?.params?.tab || 'friends'); // 'friends' | 'requests'
   const [friends, setFriends] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -145,6 +160,15 @@ export default function FriendsScreen({ navigation, route }) {
     ]);
   }
 
+  // Starts the wizard with this friend already chosen as the opponent, then the
+  // match, pick and forfeit as usual. Only from the tab: the stack copy of this
+  // screen sits on top of a wizard in progress, and a reset would wipe its draft.
+  function challengeFriend(profile) {
+    resetChallenge();
+    updateChallenge({ opponent: profile });
+    navigation.navigate('Step1Match');
+  }
+
   const friendIds = new Set(friends.map(f => f.profile?.id));
   // People who already sent you a request: offer Accept rather than a second
   // request going the other way.
@@ -178,17 +202,22 @@ export default function FriendsScreen({ navigation, route }) {
     return (
       <View style={styles.row}>
         <Avatar username={p?.username} />
-        <View style={styles.rowInfo}>
-          <Text style={styles.rowName}>{p?.full_name || p?.username}</Text>
-          <View style={styles.subRow}>
-            <Text style={styles.rowSub}>@{p?.username}</Text>
-            <ReliabilityBadge done={p?.forfeits_done} ducked={p?.forfeits_ducked} username={p?.username} />
-          </View>
-        </View>
+        <PersonInfo profile={p} />
         {item.kind === 'friend' ? (
-          <TouchableOpacity style={styles.removeBtn} onPress={() => removeFriend(item.friendshipId)}>
-            <Text style={styles.removeBtnText}>Remove</Text>
-          </TouchableOpacity>
+          <View style={styles.friendActions}>
+            {isTab && (
+              <TouchableOpacity
+                style={styles.challengeBtn}
+                onPress={() => challengeFriend(p)}
+                accessibilityLabel={`Challenge ${p?.username}`}
+              >
+                <Text style={styles.challengeBtnIcon}>⚔️</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.removeBtn} onPress={() => removeFriend(item.friendshipId)}>
+              <Text style={styles.removeBtnText}>Remove</Text>
+            </TouchableOpacity>
+          </View>
         ) : incomingId ? (
           <TouchableOpacity style={styles.acceptPill} onPress={() => acceptRequest(incomingId)}>
             <Text style={styles.acceptPillText}>✓ Accept</Text>
@@ -292,13 +321,7 @@ export default function FriendsScreen({ navigation, route }) {
               renderItem={({ item }) => (
                 <View style={styles.row}>
                   <Avatar username={item.profile?.username} />
-                  <View style={styles.rowInfo}>
-                    <Text style={styles.rowName}>{item.profile?.full_name || item.profile?.username}</Text>
-                    <View style={styles.subRow}>
-                      <Text style={styles.rowSub}>@{item.profile?.username}</Text>
-                      <ReliabilityBadge done={item.profile?.forfeits_done} ducked={item.profile?.forfeits_ducked} username={item.profile?.username} />
-                    </View>
-                  </View>
+                  <PersonInfo profile={item.profile} />
                   <View style={styles.requestActions}>
                     <TouchableOpacity style={styles.declineBtn} onPress={() => declineRequest(item.id)}>
                       <Text style={styles.declineBtnText}>✕</Text>
@@ -342,9 +365,12 @@ const styles = StyleSheet.create({
   avatar: { alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.white, fontWeight: 'bold' },
   rowInfo: { flex: 1, marginLeft: 12 },
-  rowName: { color: colors.white, fontWeight: '600', fontSize: 14 },
-  rowSub: { color: colors.textSecondary, fontSize: 12 },
-  subRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  rowName: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
+  subRow: { flexDirection: 'row', marginTop: 4 },
+
+  friendActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  challengeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  challengeBtnIcon: { fontSize: 16 },
 
   requestActions: { flexDirection: 'row', gap: 8 },
   declineBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },

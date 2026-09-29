@@ -12,6 +12,9 @@ import MatchRow from '../../components/MatchRow';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
+// The rest are one tap away in Challenges, the matches are what Home is for.
+const MAX_ACTIVE_CARDS = 2;
+
 function ActiveChallengeCard({ item, currentUserId, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
   const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
@@ -56,14 +59,13 @@ export default function HomeScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
   const [activeChallenges, setActiveChallenges] = useState([]);
   const [pendingForfeits, setPendingForfeits] = useState([]);
-  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [proofToReview, setProofToReview] = useState([]);
   const [matches, setMatches] = useState([]);
   const [availableSports, setAvailableSports] = useState([]);
   const [selectedSport, setSelectedSport] = useState(null);
   const [selectedLeague, setSelectedLeague] = useState(null);
   const [wonLost, setWonLost] = useState({ won: 0, lost: 0 });
   const [loadError, setLoadError] = useState(false);
-  const [friendRequests, setFriendRequests] = useState(0);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -121,17 +123,10 @@ export default function HomeScreen({ navigation }) {
 
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('username, points, forfeits_done, forfeits_ducked')
+      .select('username, forfeits_done, forfeits_ducked')
       .eq('id', user.id)
       .single();
     if (profileData) setProfile(profileData);
-
-    const { count: incoming } = await supabase
-      .from('friendships')
-      .select('id', { count: 'exact', head: true })
-      .eq('addressee_id', user.id)
-      .eq('status', 'pending');
-    setFriendRequests(incoming || 0);
 
     const { data: challenges } = await supabase
       .from('challenges')
@@ -154,10 +149,10 @@ export default function HomeScreen({ navigation }) {
     // Forfeits: lost challenges where no proof submitted yet, and the 7 days have
     // not run out. A ducked one is resolved and there is nothing left to do.
     setPendingForfeits(completed.filter(c => c.winner_id && c.winner_id !== user.id && !c.proof_url && !c.proof_photo_url && !c.forfeit_ducked));
-    // Pending approval: lost challenges where proof submitted but winner hasn't approved
-    setPendingApprovals(completed.filter(c =>
-      (c.winner_id === user.id && (c.proof_url || c.proof_photo_url) && !c.proof_approved) ||
-      (c.winner_id && c.winner_id !== user.id && (c.proof_url || c.proof_photo_url) && !c.proof_approved)
+    // Proof the loser sent and this user, the winner, has not approved or rejected.
+    // The loser's own "waiting for approval" is not an action and is not listed.
+    setProofToReview(completed.filter(c =>
+      c.winner_id === user.id && (c.proof_url || c.proof_photo_url) && !c.proof_approved && !c.forfeit_ducked
     ));
   }
 
@@ -203,6 +198,29 @@ export default function HomeScreen({ navigation }) {
 
   const { won, lost } = wonLost;
 
+  const openDetail = c => navigation.navigate('ChallengeDetail', { challenge: c, currentUserId: user?.id });
+  const invites = activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending');
+  const actions = [
+    ...invites.map(c => ({
+      key: `invite-${c.id}`, emoji: '⚔️', color: colors.primary,
+      title: `@${c.challenger?.username} challenged you`,
+      sub: `${c.match_home_team} vs ${c.match_away_team}`,
+      onPress: () => navigation.navigate('AcceptPick', { challenge: c }),
+    })),
+    ...pendingForfeits.map(c => ({
+      key: `forfeit-${c.id}`, emoji: '🏃', color: colors.unreliable,
+      title: `Forfeit due: ${c.forfeit}`,
+      sub: `${c.match_home_team} vs ${c.match_away_team}`,
+      onPress: () => openDetail(c),
+    })),
+    ...proofToReview.map(c => ({
+      key: `review-${c.id}`, emoji: '👀', color: colors.success,
+      title: 'Review proof',
+      sub: `${c.forfeit} · ${c.match_home_team} vs ${c.match_away_team}`,
+      onPress: () => openDetail(c),
+    })),
+  ];
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -211,49 +229,28 @@ export default function HomeScreen({ navigation }) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
+          <TouchableOpacity style={styles.headerLeft} onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{username[0].toUpperCase()}</Text>
             </View>
-            <View>
-              <Text style={styles.greeting}>Welcome back 👋</Text>
-              <Text style={styles.username}>@{username}</Text>
-            </View>
-          </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={styles.notifBtn}
-              onPress={() => navigation.navigate('FriendsTab', { tab: friendRequests > 0 ? 'requests' : 'friends' })}
-            >
-              <Text style={styles.notifIcon}>👥</Text>
-              {friendRequests > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{friendRequests}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.notifBtn}
-              onPress={() => navigation.navigate('Notifications')}
-            >
-              <Text style={styles.notifIcon}>🔔</Text>
-              {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {activeChallenges.filter(c => c.opponent_id === user?.id && c.status === 'pending').length}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.username}>@{username}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.notifBtn}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Text style={styles.notifIcon}>🔔</Text>
+            {invites.length > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{invites.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Stats Bar */}
+        {/* Record and reliability. Points still exist and are still awarded, they
+            are only not shown here. */}
         <View style={styles.statsBar}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{profile?.points ?? 0}</Text>
-            <Text style={styles.statLabel}>Points</Text>
-          </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{won}–{lost}</Text>
             <Text style={styles.statLabel}>Record</Text>
@@ -266,80 +263,48 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Pending Forfeits */}
-        {pendingForfeits.length > 0 && (
+        {/* Requires your action, only when there is something */}
+        {actions.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>👎 Pending Forfeits</Text>
-            {pendingForfeits.map(c => (
-              <TouchableOpacity
-                key={c.id}
-                style={styles.forfeitCard}
-                onPress={() => navigation.navigate('ChallengeDetail', { challenge: c, currentUserId: user?.id })}
-                activeOpacity={0.8}
-              >
-                <View style={styles.forfeitCardLeft}>
-                  <Text style={styles.forfeitCardEmoji}>🏃</Text>
-                </View>
-                <View style={styles.forfeitCardBody}>
-                  <Text style={styles.forfeitCardTitle}>{c.forfeit}</Text>
-                  <Text style={styles.forfeitCardSub}>
-                    {c.match_home_team} vs {c.match_away_team}
-                  </Text>
-                </View>
-                <Text style={styles.forfeitCardArrow}>›</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Pending Proof Approvals */}
-        {pendingApprovals.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>👀 Proof to Review</Text>
-            {pendingApprovals.map(c => {
-              const isWinner = c.winner_id === user?.id;
-              return (
+            <Text style={styles.sectionTitle}>⚡ Requires your action</Text>
+            <View style={styles.actionList}>
+              {actions.map((a, i) => (
                 <TouchableOpacity
-                  key={c.id}
-                  style={styles.approvalCard}
-                  onPress={() => navigation.navigate('ChallengeDetail', { challenge: c, currentUserId: user?.id })}
+                  key={a.key}
+                  style={[styles.actionRow, i > 0 && styles.actionRowDivider]}
+                  onPress={a.onPress}
                   activeOpacity={0.8}
                 >
-                  <View style={styles.forfeitCardLeft}>
-                    <Text style={styles.forfeitCardEmoji}>{isWinner ? '👀' : '⏳'}</Text>
+                  <View style={[styles.actionDot, { backgroundColor: a.color }]} />
+                  <Text style={styles.actionEmoji}>{a.emoji}</Text>
+                  <View style={styles.actionBody}>
+                    <Text style={styles.actionTitle} numberOfLines={1}>{a.title}</Text>
+                    <Text style={styles.actionSub} numberOfLines={1}>{a.sub}</Text>
                   </View>
-                  <View style={styles.forfeitCardBody}>
-                    <Text style={styles.forfeitCardTitle}>
-                      {isWinner ? 'Review proof' : 'Waiting for approval'}
-                    </Text>
-                    <Text style={styles.forfeitCardSub}>{c.forfeit} · {c.match_home_team} vs {c.match_away_team}</Text>
-                  </View>
-                  <Text style={styles.forfeitCardArrow}>›</Text>
+                  <Text style={styles.actionArrow}>›</Text>
                 </TouchableOpacity>
-              );
-            })}
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Active Challenges */}
+        {/* Active duels, at most two, the rest are in Challenges */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>⚔️ Active Challenges</Text>
+            <Text style={styles.sectionTitleInline}>⚔️ Your active duels</Text>
             {activeChallenges.length > 0 && (
               <TouchableOpacity onPress={() => navigation.navigate('Challenges')}>
-                <Text style={styles.seeAll}>See all →</Text>
+                <Text style={styles.seeAll}>
+                  {activeChallenges.length > MAX_ACTIVE_CARDS ? `See all ${activeChallenges.length} →` : 'See all →'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
 
           {activeChallenges.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyEmoji}>🏆</Text>
-              <Text style={styles.emptyText}>No active challenges yet</Text>
-              <Text style={styles.emptySubtext}>Pick a match below and challenge a friend!</Text>
-            </View>
+            <Text style={styles.emptyInline}>No active duels. Pick a match below to start one.</Text>
           ) : (
-            activeChallenges.slice(0, 3).map(item => (
+            activeChallenges.slice(0, MAX_ACTIVE_CARDS).map(item => (
               <ActiveChallengeCard
                 key={item.id}
                 item={item}
@@ -402,7 +367,7 @@ export default function HomeScreen({ navigation }) {
               <MatchCard
                 key={match.idEvent}
                 match={match}
-                onChallenge={(m) => { updateChallenge({ match: m }); navigation.navigate('Step2Pick'); }}
+                onChallenge={(m) => { updateChallenge({ match: m, opponent: null }); navigation.navigate('Step2Pick'); }}
               />
             ))
           )}
@@ -415,15 +380,13 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.white, fontWeight: 'bold', fontSize: 18 },
-  greeting: { color: colors.textSecondary, fontSize: 12 },
-  username: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
+  username: { color: colors.white, fontWeight: 'bold', fontSize: 16, flexShrink: 1 },
   notifBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   notifIcon: { fontSize: 20 },
-  badge: { position: 'absolute', top: 2, right: 2, backgroundColor: '#EF4444', borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: colors.background },
+  badge: { position: 'absolute', top: 2, right: 2, backgroundColor: colors.unreliable, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: colors.background },
   badgeText: { color: colors.white, fontSize: 10, fontWeight: 'bold' },
 
   statsBar: { flexDirection: 'row', marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: colors.border },
@@ -435,7 +398,18 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24, paddingHorizontal: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { color: colors.white, fontWeight: 'bold', fontSize: 16, marginBottom: 12 },
-  seeAll: { color: colors.primary, fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  sectionTitleInline: { color: colors.white, fontWeight: 'bold', fontSize: 16 },
+  seeAll: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+
+  actionList: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  actionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingRight: 14 },
+  actionRowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
+  actionDot: { width: 3, alignSelf: 'stretch', marginRight: 12 },
+  actionEmoji: { fontSize: 18, marginRight: 10 },
+  actionBody: { flex: 1 },
+  actionTitle: { color: colors.white, fontWeight: '700', fontSize: 14, marginBottom: 2 },
+  actionSub: { color: colors.textSecondary, fontSize: 12 },
+  actionArrow: { color: colors.textSecondary, fontSize: 22, marginLeft: 8 },
 
   activeChallengeCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: colors.border },
   acTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
@@ -445,16 +419,8 @@ const styles = StyleSheet.create({
   acMatch: { color: colors.textSecondary, fontSize: 12, marginBottom: 4 },
   acForfeit: { color: colors.textSecondary, fontSize: 12 },
 
-  forfeitCard: { backgroundColor: '#EF444415', borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#EF4444', flexDirection: 'row', alignItems: 'center' },
-  forfeitCardLeft: { marginRight: 12 },
-  forfeitCardEmoji: { fontSize: 22 },
-  forfeitCardBody: { flex: 1 },
-  forfeitCardTitle: { color: colors.white, fontWeight: '700', fontSize: 14, marginBottom: 3 },
-  forfeitCardSub: { color: colors.textSecondary, fontSize: 12 },
-  forfeitCardArrow: { color: colors.textSecondary, fontSize: 22, marginLeft: 8 },
-  approvalCard: { backgroundColor: '#10B98115', borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#10B981', flexDirection: 'row', alignItems: 'center' },
+  emptyInline: { color: colors.textSecondary, fontSize: 13 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  emptyEmoji: { fontSize: 36, marginBottom: 8 },
   emptyText: { color: colors.white, fontWeight: '600', fontSize: 14, marginBottom: 4 },
   emptySubtext: { color: colors.textSecondary, fontSize: 12, textAlign: 'center' },
 

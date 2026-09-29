@@ -269,7 +269,7 @@ Reliability is shown instead of win rate, as a word and never a percentage, beca
 
 Resolved means done plus ducked. A forfeit still inside its 7 days counts nowhere.
 `ReliabilityBadge` shows the word on Profile, Home, AcceptPick, Challenge Detail and Friends (friends, search results and requests), and the icon
-alone in the Leaderboard and the opponent picker. Tapping it shows the count.
+alone in the Leaderboard (hidden for now, see Navigation) and the opponent picker. Tapping it shows the count.
 
 ## The other edge function
 
@@ -344,18 +344,35 @@ maintained lookup tables. `F1_DRIVERS` needs editing every season.
 
 ## Navigation
 
-`src/navigation/index.js`. A native stack wrapping a five tab bottom navigator.
+`src/navigation/index.js`. A native stack wrapping a four tab bottom navigator.
+
+**Points are hidden, not removed.** They are still awarded by `challenges_rewards` and stored in
+`profiles.points`, but Home no longer shows them and the Leaderboard tab is off. The Leaderboard
+screen is still registered on the stack with nothing linking to it; putting its `Tab.Screen` back
+restores it. Profile and Challenge Detail still mention points.
 
 The Friends screen is registered twice with the same component. `FriendsTab` is the bottom tab, and
-the Home 👥 button (badged with incoming requests) and the Profile quick link switch to it.
+the Profile quick link switches to it. Home has no Friends button any more.
 `Friends` on the stack is only for Step4Opponent's "Find Friends", so the wizard stays underneath
 and Back returns to it with the draft intact. The screen hides its back arrow when it is the tab,
 and takes an optional `tab` param: `friends` or `requests`. The Friends tab has one search box
-that filters your friends and, from two characters, also lists other players to add.
+that filters your friends and, from two characters, also lists other players to add. Rows show the
+username in bold with the reliability word under it, no full name. Each friend on the tab has a ⚔️
+button that resets the wizard, puts that friend in `challenge.opponent` and opens Step1Match, so the
+friend is already selected in Step4Opponent. The stack copy has no ⚔️, a reset there would wipe the
+draft underneath. Home's match cards clear `opponent` so a stale one cannot carry over.
 
-- **Tabs:** Home, Challenges, Leaderboard, Friends, Profile
+- **Tabs:** Home, Challenges, Friends, Profile
+- **Tab badges:** Challenges shows active duels (pending or accepted, the same set as Home),
+  Friends shows incoming friend requests. `useTabBadges` in the navigator recounts on every tab
+  focus, on return to the foreground and on realtime changes. DELETE events cannot be filtered,
+  so they are heard for the whole table and only trigger a recount.
+- **Home, top to bottom:** header (avatar and @username open Profile, 🔔 on the right badged with
+  incoming invites), record and reliability bar, "Requires your action" only when there is an
+  incoming invite, a forfeit to do or proof to review, at most two active duel cards with See all
+  going to Challenges, then Upcoming Matches
 - **Stacked on top:** Notifications, the four wizard steps, AcceptPick, Friends,
-  Settings, ChallengeDetail
+  Settings, ChallengeDetail, Leaderboard (hidden, nothing navigates to it)
 - **Unauthenticated stack:** Onboarding (first launch only), Login, Register, ForgotPassword,
   ConfirmEmail
 
@@ -411,6 +428,7 @@ Applied by hand in the SQL editor, in order, and verified:
 | `20260928000003_results_only_from_feed.sql` | players cannot set results or points, `increment_points` is service role only |
 | `20260928000004_points_for_keeping_your_word.sql` | points at forfeit resolution, the day 7 sweep, reliability columns on challenges |
 | `20260929000000_reject_proof.sql` | the winner can reject proof, and the rewards trigger renamed so it fires after the guard |
+| `20260929000001_realtime_friendships.sql` | challenges and friendships in the realtime publication, for the tab badges |
 
 To see what is really there, in the SQL editor:
 

@@ -19,7 +19,8 @@ export default function Step4Opponent({ navigation }) {
   const [others, setOthers] = useState([]);
   const [userId, setUserId] = useState(null);
   const latestQuery = useRef('');
-  const [opponent, setOpponent] = useState(null);
+  // Already chosen when the wizard was started from a friend's ⚔️ on the Friends tab
+  const [opponent, setOpponent] = useState(challenge.opponent);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
