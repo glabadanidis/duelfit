@@ -11,6 +11,10 @@ non trivial changes. This file is the conventions and the traps.
 - **Never remove the `.eq('status', 'accepted')` guard** on the settlement update in
   `supabase/functions/settle-challenges/index.ts`. It is the only thing preventing a double points
   award when two settlement runs overlap.
+- **Points are awarded by the database, never by the app or settle-challenges.** The
+  `challenges_rewards` trigger pays on proof approval and on the day 7 sweep. Do not add an
+  `increment_points` call anywhere, it would pay twice. Reliability thresholds live only in
+  `src/constants/reliability.js`.
 - **Results come only from the match feed.** Players cannot mark a winner, there is no screen for
   it and the `challenges_guard_client_update` trigger rejects it. Do not bring back a manual result
   screen, the owner explicitly removed it.
@@ -88,10 +92,16 @@ non trivial changes. This file is the conventions and the traps.
   rather than an error. Tightening means dropping every policy for that command, not adding a
   stricter one next to it. A delete or update that "succeeds" but changes nothing is usually a
   missing policy. The live policy table is in ARCHITECTURE.md.
+- **Triggers on the same table fire in alphabetical order of name.** `challenges_rewards` must sort
+  after `challenges_guard_client_update`, because it writes columns the guard refuses from a player.
+  Its first name, `challenges_apply_rewards`, sorted first and every proof upload failed. Check the
+  order before naming a new trigger on `challenges`.
+- **Proof deadlines exist twice**, in the guard and sweep in SQL and in `proofDeadline()` in
+  `src/constants/reliability.js`. Change one, change the other.
 - **Challenges are open to anyone, friends are only listed first.** Do not add a friendship check to
   the challenges INSERT policy, that was tried and explicitly rejected.
-- **`src/components/` holds only `MatchRow`**, the date and kick off block plus the two team rows,
-  shared by Home and Step1Match. If you are about to copy a card into a third screen, extract it
+- **`src/components/` holds only `MatchRow` and `ReliabilityBadge`.** `MatchRow` is the date and
+  kick off block plus the two team rows, shared by Home and Step1Match. If you are about to copy a card into a third screen, extract it
   instead. That is how the two largest files got that big.
 
 ## Before you commit

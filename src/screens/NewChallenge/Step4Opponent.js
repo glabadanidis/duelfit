@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import { useChallenge } from '../../constants/challengeContext';
 import { notifyChallengeSent } from '../../constants/notifications';
+import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
 export default function Step4Opponent({ navigation }) {
@@ -40,8 +41,8 @@ export default function Step4Opponent({ navigation }) {
       .from('friendships')
       .select(`
         requester_id,
-        requester:profiles!friendships_requester_id_fkey(id, username, full_name),
-        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name)
+        requester:profiles!friendships_requester_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked),
+        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked)
       `)
       .eq('status', 'accepted')
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
@@ -63,7 +64,7 @@ export default function Step4Opponent({ navigation }) {
     if (q.length < 2) { setOthers([]); return; }
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, full_name')
+      .select('id, username, full_name, forfeits_done, forfeits_ducked')
       .ilike('username', `%${q}%`)
       .neq('id', userId)
       .limit(10);
@@ -90,7 +91,10 @@ export default function Step4Opponent({ navigation }) {
           <Text style={styles.userAvatarText}>{u.username[0].toUpperCase()}</Text>
         </View>
         <View>
-          <Text style={styles.userUsername}>@{u.username}</Text>
+          <View style={styles.userNameRow}>
+            <Text style={styles.userUsername}>@{u.username}</Text>
+            <ReliabilityBadge compact done={u.forfeits_done} ducked={u.forfeits_ducked} username={u.username} />
+          </View>
           <Text style={styles.userFullName}>{u.full_name}</Text>
         </View>
         {opponent?.id === u.id && <Text style={styles.checkmark}>✓</Text>}
@@ -231,6 +235,7 @@ const styles = StyleSheet.create({
   userCardActive: { borderColor: colors.primary },
   userAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   userAvatarText: { color: colors.white, fontWeight: 'bold', fontSize: 16 },
+  userNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   userUsername: { color: colors.white, fontWeight: 'bold', fontSize: 14 },
   userFullName: { color: colors.textSecondary, fontSize: 12 },
   checkmark: { color: colors.accent, fontWeight: 'bold', fontSize: 18, marginLeft: 'auto' },

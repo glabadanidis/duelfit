@@ -64,6 +64,9 @@ Deno.serve(async (req) => {
       else if (opponentWon && !challengerWon) winner_id = challenge.opponent_id;
       // both picked same result (both right or both wrong) → winner_id stays null (draw)
 
+      // No points here. They move when the forfeit is resolved, by the
+      // challenges_rewards trigger, which also stamps settled_at. The status
+      // guard stays: it stops two overlapping runs completing the same challenge.
       const { data: updated } = await supabase
         .from('challenges')
         .update({ status: 'completed', winner_id, result: actualResult })
@@ -72,12 +75,7 @@ Deno.serve(async (req) => {
         .select('id')
         .single();
 
-      // Only award points if we were the one to complete it (prevents double-award race)
-      if (updated && winner_id) {
-        await supabase.rpc('increment_points', { user_id: winner_id, amount: 10 });
-      }
-
-      settled++;
+      if (updated) settled++;
     } catch (_) {
       // Skip this challenge and continue with the rest
     }

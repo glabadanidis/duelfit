@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
+import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
 function Medal({ rank }) {
@@ -32,7 +33,11 @@ function LeaderboardRow({ item, rank, isCurrentUser }) {
           {item.full_name || item.username}
           {isCurrentUser ? '  (You)' : ''}
         </Text>
-        <Text style={styles.username}>@{item.username}</Text>
+        {/* Second line: after a long full name the first has no room left */}
+        <View style={styles.subRow}>
+          <Text style={styles.username}>@{item.username}</Text>
+          <ReliabilityBadge compact done={item.forfeits_done} ducked={item.forfeits_ducked} username={item.username} />
+        </View>
       </View>
       <View style={styles.pointsCol}>
         <Text style={[styles.points, rank === 1 && { color: '#F59E0B' }]}>
@@ -68,7 +73,7 @@ export default function LeaderboardScreen() {
     if (p === 'alltime') {
       const res = await supabase
         .from('profiles')
-        .select('id, username, full_name, points')
+        .select('id, username, full_name, points, forfeits_done, forfeits_ducked')
         .order('points', { ascending: false })
         .limit(50);
       data = res.data;
@@ -96,7 +101,7 @@ export default function LeaderboardScreen() {
         const ids = Object.keys(tally);
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, username, full_name')
+          .select('id, username, full_name, forfeits_done, forfeits_ducked')
           .in('id', ids);
 
         data = (profiles || [])
@@ -271,7 +276,8 @@ const styles = StyleSheet.create({
   nameCol: { flex: 1 },
   name: { color: colors.white, fontWeight: '600', fontSize: 14 },
   nameCurrent: { color: colors.primary },
-  username: { color: colors.textSecondary, fontSize: 12, marginTop: 1 },
+  subRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
+  username: { color: colors.textSecondary, fontSize: 12 },
 
   pointsCol: { alignItems: 'flex-end' },
   points: { color: colors.primary, fontWeight: 'bold', fontSize: 18 },

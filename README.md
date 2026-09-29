@@ -124,7 +124,8 @@ src/
     notifications.js       Expo push registration and send helpers
     challengeContext.js    holds the in progress challenge across the 4 step wizard
     colors.js              the palette
-  components/              MatchRow only, shared by Home and Step1Match
+    reliability.js         reliability levels and the proof deadlines, one place for every screen
+  components/              MatchRow (Home, Step1Match) and ReliabilityBadge
 supabase/
   migrations/              SQL applied by hand in the SQL editor, see ARCHITECTURE.md
   functions/               settle-challenges, delete-account

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../constants/supabase';
 import { notifyChallengeAccepted } from '../../constants/notifications';
 import { F1_DRIVERS, getTeamFlag } from '../../constants/api';
+import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
 const F1_LEAGUE_ID = 4370;
@@ -12,6 +13,16 @@ export default function AcceptPickScreen({ route, navigation }) {
   const { challenge } = route.params;
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [challenger, setChallenger] = useState(null);
+
+  // Whether the challenger does their forfeits is worth knowing before accepting.
+  useEffect(() => {
+    supabase.from('profiles')
+      .select('username, forfeits_done, forfeits_ducked')
+      .eq('id', challenge.challenger_id)
+      .single()
+      .then(({ data }) => setChallenger(data));
+  }, [challenge.challenger_id]);
 
   const isF1 = Number(challenge.match_id?.toString().length) > 0 &&
     challenge.match_league?.toLowerCase().includes('formula');
@@ -74,6 +85,16 @@ export default function AcceptPickScreen({ route, navigation }) {
           <Text style={styles.infoLabel}>Forfeit</Text>
           <Text style={styles.infoValue}>{challenge.forfeit}</Text>
         </View>
+        {challenger && (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>@{challenger.username}</Text>
+            <ReliabilityBadge
+              done={challenger.forfeits_done}
+              ducked={challenger.forfeits_ducked}
+              username={challenger.username}
+            />
+          </View>
+        )}
       </View>
 
       <Text style={styles.question}>
@@ -148,7 +169,7 @@ const styles = StyleSheet.create({
   teamName: { flex: 1, color: colors.white, fontWeight: 'bold', fontSize: 14, textAlign: 'center' },
   vs: { color: colors.primary, fontWeight: 'bold', fontSize: 12, marginHorizontal: 8 },
   divider: { height: 1, backgroundColor: colors.border, marginBottom: 12 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   infoLabel: { color: colors.textSecondary, fontSize: 13 },
   infoValue: { color: colors.white, fontSize: 13, fontWeight: '600' },
 

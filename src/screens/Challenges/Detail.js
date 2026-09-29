@@ -5,6 +5,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../constants/supabase';
 import { getTeamFlag, lookupEvent } from '../../constants/api';
+import { daysAfter, proofDeadline, MAX_REJECTIONS, REJECT_GRACE_DAYS } from '../../constants/reliability';
+import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
 function formatDate(dateStr) {
@@ -46,7 +48,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
     setLoadingChallenge(true);
     const [{ data }, { data: { user } }] = await Promise.all([
       supabase.from('challenges')
-        .select(`*, challenger:profiles!challenges_challenger_id_fkey(username), opponent:profiles!challenges_opponent_id_fkey(username)`)
+        .select(`*, challenger:profiles!challenges_challenger_id_fkey(username, forfeits_done, forfeits_ducked), opponent:profiles!challenges_opponent_id_fkey(username, forfeits_done, forfeits_ducked)`)
         .eq('id', id)
         .single(),
       supabase.auth.getUser(),
@@ -105,6 +107,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
   const myUsername = isChallenger
     ? challenge.challenger?.username
     : challenge.opponent?.username;
+  const theirProfile = isChallenger ? challenge.opponent : challenge.challenger;
 
   async function pickAndUploadProof(useCamera) {
     const permission = useCamera
@@ -140,7 +143,8 @@ export default function ChallengeDetailScreen({ route, navigation }) {
 
       const { data: { publicUrl } } = supabase.storage.from('proofs').getPublicUrl(fileName);
 
-      await supabase.from('challenges').update({ proof_photo_url: publicUrl }).eq('id', challenge.id);
+      const { error: saveError } = await supabase.from('challenges').update({ proof_photo_url: publicUrl }).eq('id', challenge.id);
+      if (saveError) throw saveError;
       setChallenge(prev => ({ ...prev, proof_photo_url: publicUrl }));
       Alert.alert('Photo submitted!', 'Your opponent can now see your proof.');
     } catch (e) {
@@ -158,7 +162,8 @@ export default function ChallengeDetailScreen({ route, navigation }) {
     }
     setUploading(true);
     try {
-      await supabase.from('challenges').update({ proof_url: url }).eq('id', challenge.id);
+      const { error } = await supabase.from('challenges').update({ proof_url: url }).eq('id', challenge.id);
+      if (error) throw error;
       setChallenge(prev => ({ ...prev, proof_url: url, _removingLink: false }));
       setLinkInput('');
       fetchOgImage(url);
@@ -178,15 +183,50 @@ export default function ChallengeDetailScreen({ route, navigation }) {
     const { error } = await supabase.from('challenges').update({ proof_approved: true }).eq('id', challenge.id).eq('winner_id', resolvedUserId);
     if (error) { Alert.alert('Error', error.message); return; }
     setChallenge(prev => ({ ...prev, proof_approved: true }));
-    Alert.alert('Proof approved! ✅', 'The forfeit has been confirmed.', [
+    Alert.alert('Proof approved! ✅', `The forfeit has been confirmed. You get +10 points and @${theirUsername} gets +5 for keeping their word.`, [
       { text: 'OK', onPress: () => navigation.goBack() },
     ]);
+  }
+
+  function rejectProof() {
+    const left = MAX_REJECTIONS - (challenge.proof_rejections || 0) - 1;
+    Alert.alert(
+      'Reject proof?',
+      `The proof is removed and @${theirUsername} gets at least ${REJECT_GRACE_DAYS} more days to send new proof. `
+        + 'If nothing arrives, it counts as a missed forfeit and you get +5 instead of +10.'
+        + (left === 0 ? '\n\nThis is your last rejection. After it you can only approve.' : ''),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reject', style: 'destructive', onPress: async () => {
+          const { data, error } = await supabase.from('challenges')
+            .update({ proof_url: null, proof_photo_url: null })
+            .eq('id', challenge.id).eq('winner_id', resolvedUserId)
+            .select('proof_rejected_at, proof_rejections')
+            .single();
+          if (error) { Alert.alert('Error', error.message); return; }
+          setOgImage(null);
+          setChallenge(prev => ({ ...prev, ...data, proof_url: null, proof_photo_url: null, proof_submitted_at: null }));
+        } },
+      ],
+    );
   }
 
   const status = statusInfo(challenge.status);
   const isWinner   = challenge.winner_id === resolvedUserId;
   const isLoser    = challenge.status === 'completed' && challenge.winner_id && !isWinner;
   const isDraw     = challenge.status === 'completed' && !challenge.winner_id;
+  const ducked     = !!challenge.forfeit_ducked;
+  // Proof can be sent or replaced until the deadline, which a rejection can push
+  // back. The database enforces the same rule, this only hides controls that
+  // would fail.
+  const shortDate = d => d?.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) || null;
+  const deadline = proofDeadline(challenge);
+  const hasProof = !!(challenge.proof_url || challenge.proof_photo_url);
+  const wasRejected = !!challenge.proof_rejected_at && !hasProof && !challenge.proof_approved;
+  const canReject = isWinner && hasProof && !challenge.proof_approved && (challenge.proof_rejections || 0) < MAX_REJECTIONS;
+  const deadlineText = shortDate(deadline);
+  const reviewDeadlineText = shortDate(daysAfter(challenge.proof_submitted_at));
+  const canSubmitProof = isLoser && !challenge.proof_approved && !ducked && (!deadline || deadline > new Date());
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -217,8 +257,19 @@ export default function ChallengeDetailScreen({ route, navigation }) {
             <Text style={[styles.resultText, { color: isDraw ? '#F59E0B' : isWinner ? '#10B981' : '#EF4444' }]}>
               {isDraw ? "It's a draw!" : isWinner ? 'You won!' : 'You lost'}
             </Text>
-            {isWinner && <Text style={styles.resultSub}>+10 points earned</Text>}
-            {isLoser  && <Text style={styles.resultSub}>Forfeit: {challenge.forfeit}</Text>}
+            {isWinner && (
+              <Text style={styles.resultSub}>
+                {challenge.winner_points_awarded
+                  ? (ducked ? '+5 points earned' : '+10 points earned')
+                  : '+10 points once the forfeit is done, +5 if it is missed'}
+              </Text>
+            )}
+            {isLoser && <Text style={styles.resultSub}>Forfeit: {challenge.forfeit}</Text>}
+            {isLoser && !challenge.proof_approved && !ducked && (
+              <Text style={styles.resultSub}>
+                +5 points when your proof is approved{deadlineText ? ` · due by ${deadlineText}` : ''}
+              </Text>
+            )}
           </View>
         )}
 
@@ -227,11 +278,29 @@ export default function ChallengeDetailScreen({ route, navigation }) {
           <Text style={styles.cardTitle}>🏃 Forfeit</Text>
           <Text style={styles.forfeitText}>{challenge.forfeit}</Text>
 
-          {(isLoser || isWinner) && (
+          {(isLoser || isWinner) && ducked && (
+            <View style={styles.proofSection}>
+              <Text style={styles.duckedText}>
+                {isLoser
+                  ? `⛔ ${challenge.proof_rejected_at ? 'Your proof was rejected and no new proof came in time' : 'No proof within 7 days'}. This counts as a missed forfeit.`
+                  : `⛔ ${challenge.proof_rejected_at ? 'No new proof after your rejection' : 'No proof within 7 days'}. You got +5 points instead of 10, and it counts against @${theirUsername}'s reliability.`}
+              </Text>
+            </View>
+          )}
+
+          {(isLoser || isWinner) && !ducked && (
             <View style={styles.proofSection}>
               <Text style={styles.proofTitle}>
                 {isLoser ? 'Prove you did it' : "Opponent's proof"}
               </Text>
+
+              {wasRejected && (
+                <Text style={styles.rejectedText}>
+                  {isLoser
+                    ? `❌ @${theirUsername} rejected your proof. Send new proof by ${deadlineText}.`
+                    : `❌ You rejected the proof. @${theirUsername} has until ${deadlineText} to send new proof.`}
+                </Text>
+              )}
 
               {/* Strava activity link */}
               <View style={styles.proofBlock}>
@@ -251,7 +320,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
                         <Text style={styles.proofLinkUrl} numberOfLines={1}>{challenge.proof_url.trim()}</Text>
                       </View>
                     </TouchableOpacity>
-                    {isLoser && (
+                    {canSubmitProof && (
                       <TouchableOpacity
                         style={styles.removeLinkBtn}
                         onPress={() => setChallenge(prev => ({ ...prev, _removingLink: true }))}
@@ -263,7 +332,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
                 ) : isWinner ? (
                   <Text style={styles.proofPending}>⏳ No activity linked yet</Text>
                 ) : null}
-                {isLoser && (!challenge.proof_url || challenge._removingLink) && (
+                {canSubmitProof && (!challenge.proof_url || challenge._removingLink) && (
                   <>
                     <TouchableOpacity style={[styles.proofBtn, styles.proofBtnStrava]} onPress={() => Linking.openURL('strava://athlete/activities').catch(() => Linking.openURL('https://www.strava.com/athlete/activities'))}>
                       <Text style={styles.proofBtnText}>🟠 Open Strava to copy link</Text>
@@ -307,7 +376,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
                 ) : isWinner ? (
                   <Text style={styles.proofPending}>⏳ No photo submitted yet</Text>
                 ) : null}
-                {isLoser && (
+                {canSubmitProof && (
                   <View style={styles.photoRow}>
                     <TouchableOpacity style={[styles.proofBtnSmall, { flex: 1 }]} onPress={() => pickAndUploadProof(false)} disabled={uploading}>
                       {uploading ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.proofBtnText}>{challenge.proof_photo_url ? '🔄 Replace' : '🖼️ Upload'}</Text>}
@@ -322,10 +391,19 @@ export default function ChallengeDetailScreen({ route, navigation }) {
               {/* Approve / submitted status */}
               {(challenge.proof_url || challenge.proof_photo_url) && (
                 <>
-                  {isLoser && <Text style={styles.proofSubmittedLabel}>✅ Proof submitted</Text>}
+                  {isLoser && (
+                    <Text style={styles.proofSubmittedLabel}>
+                      {challenge.proof_approved ? '✅ Proof approved, +5 points' : '✅ Proof submitted, waiting for approval'}
+                    </Text>
+                  )}
                   {isWinner && !challenge.proof_approved && (
                     <TouchableOpacity style={styles.approveBtn} onPress={approveProof}>
                       <Text style={styles.approveBtnText}>✅ Approve Proof</Text>
+                    </TouchableOpacity>
+                  )}
+                  {canReject && (
+                    <TouchableOpacity style={styles.rejectBtn} onPress={rejectProof}>
+                      <Text style={styles.rejectBtnText}>❌ Reject Proof</Text>
                     </TouchableOpacity>
                   )}
                   {isWinner && challenge.proof_approved && (
@@ -333,8 +411,13 @@ export default function ChallengeDetailScreen({ route, navigation }) {
                   )}
                 </>
               )}
-              {isWinner && !challenge.proof_url && !challenge.proof_photo_url && (
-                <Text style={styles.proofPending}>⏳ Waiting for opponent's proof...</Text>
+              {isWinner && !hasProof && !wasRejected && (
+                <Text style={styles.proofPending}>
+                  ⏳ Waiting for opponent's proof{deadlineText ? ` until ${deadlineText}` : '...'}
+                </Text>
+              )}
+              {isWinner && !challenge.proof_approved && (challenge.proof_url || challenge.proof_photo_url) && reviewDeadlineText && (
+                <Text style={styles.proofPending}>Approved automatically on {reviewDeadlineText} if you do not review it</Text>
               )}
             </View>
           )}
@@ -389,6 +472,15 @@ export default function ChallengeDetailScreen({ route, navigation }) {
               </View>
               <Text style={styles.playerName}>@{theirUsername}</Text>
               <Text style={styles.playerRole}>Opponent</Text>
+              {theirProfile && (
+                <View style={styles.playerBadge}>
+                  <ReliabilityBadge
+                    done={theirProfile.forfeits_done}
+                    ducked={theirProfile.forfeits_ducked}
+                    username={theirUsername}
+                  />
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -482,6 +574,7 @@ const styles = StyleSheet.create({
   playerName: { color: colors.white, fontWeight: '600', fontSize: 12, marginBottom: 2 },
   playerRole: { color: colors.textSecondary, fontSize: 10 },
   playerVs: { fontSize: 20, marginHorizontal: 8 },
+  playerBadge: { marginTop: 6 },
 
   picksRow: { flexDirection: 'row', alignItems: 'center' },
   pickSide: { flex: 1, alignItems: 'center', paddingVertical: 6 },
@@ -507,6 +600,10 @@ const styles = StyleSheet.create({
   proofSubmittedLabel: { color: '#10B981', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   approveBtn: { backgroundColor: '#10B981', borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   approveBtnText: { color: colors.white, fontWeight: '700', fontSize: 15 },
+  rejectBtn: { borderWidth: 1, borderColor: colors.unreliable, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
+  rejectBtnText: { color: colors.unreliable, fontWeight: '700', fontSize: 15 },
+  rejectedText: { color: colors.unreliable, fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: 12 },
+  duckedText: { color: colors.unreliable, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   proofPending: { color: colors.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: 8 },
   proofLinkBtn: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary, borderRadius: 12, overflow: 'hidden', marginBottom: 6 },
   removeLinkBtn: { alignItems: 'center', marginBottom: 8 },

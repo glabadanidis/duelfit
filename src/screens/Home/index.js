@@ -9,6 +9,7 @@ import { supabase } from '../../constants/supabase';
 import { getUpcomingMatches, getAvailableSports, WINDOW_DAYS } from '../../constants/api';
 import { useChallenge } from '../../constants/challengeContext';
 import MatchRow from '../../components/MatchRow';
+import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
 function ActiveChallengeCard({ item, currentUserId, onPress }) {
@@ -120,7 +121,7 @@ export default function HomeScreen({ navigation }) {
 
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('username, points')
+      .select('username, points, forfeits_done, forfeits_ducked')
       .eq('id', user.id)
       .single();
     if (profileData) setProfile(profileData);
@@ -150,8 +151,9 @@ export default function HomeScreen({ navigation }) {
     const lostCount = completed.filter(c => c.winner_id && c.winner_id !== user.id).length;
     setWonLost({ won: wonCount, lost: lostCount });
 
-    // Forfeits: lost challenges where no proof submitted yet
-    setPendingForfeits(completed.filter(c => c.winner_id && c.winner_id !== user.id && !c.proof_url && !c.proof_photo_url));
+    // Forfeits: lost challenges where no proof submitted yet, and the 7 days have
+    // not run out. A ducked one is resolved and there is nothing left to do.
+    setPendingForfeits(completed.filter(c => c.winner_id && c.winner_id !== user.id && !c.proof_url && !c.proof_photo_url && !c.forfeit_ducked));
     // Pending approval: lost challenges where proof submitted but winner hasn't approved
     setPendingApprovals(completed.filter(c =>
       (c.winner_id === user.id && (c.proof_url || c.proof_photo_url) && !c.proof_approved) ||
@@ -200,7 +202,6 @@ export default function HomeScreen({ navigation }) {
   const username = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Player';
 
   const { won, lost } = wonLost;
-  const winRate = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -249,17 +250,20 @@ export default function HomeScreen({ navigation }) {
 
         {/* Stats Bar */}
         <View style={styles.statsBar}>
-          {[
-            { label: 'Points', value: profile?.points ?? 0 },
-            { label: 'Won', value: won },
-            { label: 'Lost', value: lost },
-            { label: 'Win Rate', value: `${winRate}%` },
-          ].map((s) => (
-            <View key={s.label} style={styles.statItem}>
-              <Text style={styles.statValue}>{s.value}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{profile?.points ?? 0}</Text>
+            <Text style={styles.statLabel}>Points</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{won}–{lost}</Text>
+            <Text style={styles.statLabel}>Record</Text>
+          </View>
+          <View style={styles.statItem}>
+            <View style={styles.statBadge}>
+              <ReliabilityBadge done={profile?.forfeits_done} ducked={profile?.forfeits_ducked} />
             </View>
-          ))}
+            <Text style={styles.statLabel}>Reliability</Text>
+          </View>
         </View>
 
         {/* Pending Forfeits */}
@@ -426,6 +430,7 @@ const styles = StyleSheet.create({
   statItem: { flex: 1, alignItems: 'center' },
   statValue: { color: colors.primary, fontWeight: 'bold', fontSize: 18 },
   statLabel: { color: colors.textSecondary, fontSize: 11, marginTop: 2 },
+  statBadge: { height: 24, justifyContent: 'center' },
 
   section: { marginBottom: 24, paddingHorizontal: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

@@ -5,6 +5,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
+import ReliabilityBadge from '../../components/ReliabilityBadge';
+import { reliabilityDetail } from '../../constants/reliability';
 import colors from '../../constants/colors';
 
 export default function ProfileScreen({ navigation }) {
@@ -55,7 +57,6 @@ export default function ProfileScreen({ navigation }) {
     ]);
   }
 
-  const winRate = stats.total > 0 ? Math.round((stats.won / stats.total) * 100) : 0;
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
     : profile?.username?.[0]?.toUpperCase() || '?';
@@ -109,15 +110,16 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Win Rate Bar */}
-        <View style={styles.winRateCard}>
-          <View style={styles.winRateHeader}>
-            <Text style={styles.winRateLabel}>Win Rate</Text>
-            <Text style={styles.winRateValue}>{winRate}%</Text>
+        {/* Reliability replaces Win Rate: whether you do your forfeits matters
+            more to an opponent than how often you predict right. */}
+        <View style={styles.reliabilityCard}>
+          <View>
+            <Text style={styles.reliabilityLabel}>Reliability</Text>
+            <Text style={styles.reliabilityDetail}>
+              {reliabilityDetail(profile?.forfeits_done, profile?.forfeits_ducked)}
+            </Text>
           </View>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${winRate}%` }]} />
-          </View>
+          <ReliabilityBadge done={profile?.forfeits_done} ducked={profile?.forfeits_ducked} />
         </View>
 
         {/* Account Info */}
@@ -183,12 +185,9 @@ const styles = StyleSheet.create({
   statValue: { color: colors.primary, fontWeight: 'bold', fontSize: 22 },
   statLabel: { color: colors.textSecondary, fontSize: 11, marginTop: 4 },
 
-  winRateCard: { marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border },
-  winRateHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  winRateLabel: { color: colors.white, fontWeight: '600', fontSize: 14 },
-  winRateValue: { color: colors.primary, fontWeight: 'bold', fontSize: 14 },
-  progressBar: { height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: 8, backgroundColor: colors.primary, borderRadius: 4 },
+  reliabilityCard: { marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reliabilityLabel: { color: colors.white, fontWeight: '600', fontSize: 14 },
+  reliabilityDetail: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
 
   infoCard: { marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: colors.border },
   infoTitle: { color: colors.white, fontWeight: 'bold', fontSize: 15, marginBottom: 12 },

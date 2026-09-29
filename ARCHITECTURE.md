@@ -40,10 +40,10 @@ One row per user, `id` matches `auth.users.id`.
 | `id` | uuid, foreign key to `auth.users` |
 | `username` | unique case insensitively, enforced by the `profiles_username_lower_key` index |
 | `full_name` | set from signup metadata |
-| `points` | +10 per challenge won, incremented via the `increment_points` RPC. Not writable by the user |
+| `points` | +10 to the winner and +5 to the loser when the forfeit is resolved, see [Points and reliability](#points-and-reliability). Not writable by the user |
 | `push_token` | Expo push token, written by `savePushToken()` on every app open |
-| `forfeits_done` | forfeits completed as the loser, backfilled from approved proofs. Not yet written by the app |
-| `forfeits_ducked` | forfeits not done in time. Always 0 for now, nothing writes it yet |
+| `forfeits_done` | forfeits delivered as the loser: proof approved, by the winner or automatically on day 7 |
+| `forfeits_ducked` | forfeits with no proof within 7 days of settlement |
 
 There is no `email` column (the address lives in `auth.users`) and no `avatar_url` column.
 
@@ -70,6 +70,13 @@ The core table.
 | `status` | `pending`, `accepted`, `declined`, `completed` |
 | `winner_id` | null until settled, and stays null if both picked the same outcome |
 | `result` | the actual outcome as a string, added by the `add_result_to_challenges` migration |
+| `proof_url`, `proof_photo_url` | the loser's proof, a Strava link and a photo or video in the `proofs` bucket |
+| `proof_approved` | set by the winner, or by the day 7 sweep if proof arrived but was never reviewed |
+| `settled_at` | stamped by the `challenges_rewards` trigger when the challenge completes, starts the loser's 7 days |
+| `proof_submitted_at` | stamped by the same trigger on every proof change, starts the winner's 7 days to review |
+| `forfeit_ducked` | set by the day 7 sweep when no proof arrived |
+| `winner_points_awarded` | the double-award guard, the winner is paid once whichever path gets there first |
+| `proof_rejected_at`, `proof_rejections` | stamped by the same trigger when the winner rejects proof, at most 2 rejections |
 | `created_at` | |
 
 `status` is the whole state machine. The Challenges screen's `active` and `completed` tabs are a UI
@@ -93,10 +100,12 @@ can be challenged by searching their username.
 
 ### RPC
 
-`increment_points(user_id uuid, amount int)` is called only from `settle-challenges`. Its
-definition is **not in this repo**, it was created in the Supabase SQL editor. Since
-`20260928000003` only `service_role` may execute it; before that any logged in user could give
-anyone any number of points.
+`increment_points(user_id uuid, amount int)` is **no longer called by anything**. `settle-challenges`
+used it to pay the winner at settlement until `20260928000004`, since then the `challenges_rewards`
+trigger writes points directly. Its definition is **not in this repo**, it was created in the
+Supabase SQL editor. Since `20260928000003` only `service_role` may execute it; before that any
+logged in user could give anyone any number of points. It is left in place for manual support
+fixes, do not call it from code.
 
 `username_available(check_username text)` returns a boolean and nothing else. It is
 `SECURITY DEFINER` and callable by `anon`, because Register runs before the account exists and anon
@@ -171,9 +180,21 @@ Three things about Postgres RLS that have caused real bugs here:
       |    -> settle-challenges edge function                |
       |    -> TheSportsDB lookupevent                        |
       |    -> UPDATE status = 'completed', winner_id, result  |
-      |    -> increment_points(winner, 10)                   |
+      |    -> trigger stamps settled_at, no points yet       |
       |                                                     |
       |  there is no manual result, players cannot set one   |
+      |                                                     |
+      |  loser uploads proof, winner approves                |
+      |    -> winner +10, loser +5, forfeits_done +1         |
+      |  or winner rejects (at most twice)                   |
+      |    -> proof cleared, loser has at least 2 more days  |
+      |                                                     |
+      |  pg_cron at :30                                      |
+      |    unreviewed 7 days after proof -> approved as above|
+      |    no proof by the deadline -> winner +5,            |
+      |      forfeits_ducked +1                              |
+      |    deadline = later of 7 days after the match and    |
+      |      2 days after the last rejection                 |
 ```
 
 The four wizard steps hold state in `challengeContext.js` (match, pick, forfeit, opponent) and only
@@ -205,11 +226,50 @@ The function:
 .eq('id', challenge.id).eq('status', 'accepted')   // <- this guard
 ```
 
-Only awarding points when that update returns a row is what stops a double award if two runs
-overlap, for example the cron and a manual invocation. Do not remove the `.eq('status', 'accepted')`.
+That guard is what stops two overlapping runs completing the same challenge twice. Do not remove the
+`.eq('status', 'accepted')`. The function awards no points, see below.
 
 7. Swallows per challenge errors with `catch (_) {}` so one unparseable fixture cannot stop the
    batch. It also means **failures are silent**. There is no alerting on this.
+
+## Points and reliability
+
+Points reward keeping your word, not only predicting well. All of it happens in the database, in
+`20260928000004_points_for_keeping_your_word.sql` and `20260929000000_reject_proof.sql`:
+
+- **`challenges_rewards`**, a `BEFORE UPDATE` trigger running `challenges_apply_rewards()`. The name
+  matters: triggers fire in alphabetical order and this one must run after
+  `challenges_guard_client_update`, because it writes columns the guard refuses from a player. Under
+  its first name, `challenges_apply_rewards`, it ran first and every proof upload failed. When `proof_approved` goes to true the
+  winner gets +10, the loser +5 and `forfeits_done` +1. When `forfeit_ducked` goes to true the
+  winner gets +5 and the loser `forfeits_ducked` +1. The winner gets less for a missed forfeit so
+  they have a reason to push their opponent to do it. `winner_points_awarded` makes sure the winner
+  is paid once. A draw moves nothing, no forfeit is owed.
+- **`resolve_overdue_forfeits()`**, run by the `resolve-overdue-forfeits` cron job at `:30` every
+  hour. No proof 7 days after `settled_at` is marked ducked. Proof not reviewed 7 days after
+  `proof_submitted_at` is approved, so a last minute upload still gets a full week of review.
+  The loser can only send or replace proof before their deadline, otherwise replacing it would
+  reset the review clock forever. Without a rejection, at most 14 days from the match to resolution.
+- **The winner can reject proof**, at most twice. It clears the proof, and the loser's deadline
+  becomes the later of 7 days after the match and 2 days after the rejection, so a rejection late in
+  the week is not an instant duck. The winner has no reason to reject good proof, a missed forfeit
+  pays them 5 instead of 10. The loser cannot clear their own proof, or clearing it would buy fresh
+  days forever. The cap on rejections means a challenge always ends, in about a month at worst.
+  `proofDeadline()` in `src/constants/reliability.js` mirrors the rule for the UI.
+
+Reliability is shown instead of win rate, as a word and never a percentage, because 2 of 3 reads as
+67% when it is one missed forfeit. The rule lives only in `src/constants/reliability.js`:
+
+| Level | Rule |
+|---|---|
+| ⚪ New | fewer than 3 resolved forfeits |
+| ✅ Reliable | 80% or more delivered |
+| ⚠️ Mixed | 50 to 79% |
+| ⛔ Risky | under 50%, or **2 or more ducked** whatever the total |
+
+Resolved means done plus ducked. A forfeit still inside its 7 days counts nowhere.
+`ReliabilityBadge` shows the word on Profile, Home, AcceptPick and Challenge Detail, and the icon
+alone in the Leaderboard and the opponent picker. Tapping it shows the count.
 
 ## The other edge function
 
@@ -330,7 +390,8 @@ applied by pasting it into the SQL editor, and that is the way to apply new ones
 
 1. **No `CREATE TABLE` for anything.** `profiles`, `challenges` and `friendships` were all created
    in the dashboard. There is no way to stand up a fresh environment from this repo today.
-2. **`increment_points` is not defined anywhere in the repo** but settlement depends on it.
+2. **`increment_points` is not defined anywhere in the repo.** Nothing calls it any more, but it
+   still exists in the live database.
 3. **The `auth.users` trigger that creates a profile row is not in the repo.**
 4. **`20260604000000_rls_policies.sql` never ran.** Its friendships block used `user_id` and
    `friend_id`, which do not exist, so the whole file rolled back. The live policies were made by
@@ -348,6 +409,8 @@ Applied by hand in the SQL editor, in order, and verified:
 | `20260928000001_friendships_one_row_per_pair.sql` | one friendship row per pair |
 | `20260928000002_challenges_delete_policy.sql` | lets the challenger cancel a pending challenge |
 | `20260928000003_results_only_from_feed.sql` | players cannot set results or points, `increment_points` is service role only |
+| `20260928000004_points_for_keeping_your_word.sql` | points at forfeit resolution, the day 7 sweep, reliability columns on challenges |
+| `20260929000000_reject_proof.sql` | the winner can reject proof, and the rewards trigger renamed so it fires after the guard |
 
 To see what is really there, in the SQL editor:
 
@@ -373,8 +436,8 @@ Worth knowing before you touch anything, in rough order of how much they matter.
 - **What a player may change on a challenge is enforced by a trigger, not by RLS.** If a new client
   update is added (a new column, a new transition), `challenges_guard_client_update` has to allow it
   or it fails with `42501`. That is intended: widen the trigger deliberately, never drop it.
-- **`src/components/` holds only `MatchRow`.** The rest of the card and row markup is still
-  duplicated across screens, which is why `Challenges/Detail.js` is 541 lines.
+- **`src/components/` holds only `MatchRow` and `ReliabilityBadge`.** The rest of the card and row markup is still
+  duplicated across screens, which is why `Challenges/Detail.js` is over 600 lines.
 - **No tests of any kind.**
 - **TheSportsDB free tier is rate limited and has no SLA.** It is a single point of failure for both
   the fixture feed and settlement, and the limit is low enough to shape the design: see the

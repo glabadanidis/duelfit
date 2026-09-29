@@ -81,7 +81,8 @@ If that settles the challenge, the function is fine and the schedule is the prob
 ## Resolving a challenge manually
 
 Last resort, when the fixture genuinely will never settle itself. Set the status and the winner in
-one statement, and only award points if the update actually changed a row.
+one statement. Do not award any points by hand: they move later, when the forfeit is resolved, and
+the database does it.
 
 ```sql
 update challenges
@@ -89,14 +90,22 @@ set status = 'completed', result = '<actual outcome>', winner_id = '<uuid or nul
 where id = '<challenge id>' and status = 'accepted';
 ```
 
-Then, **only if that returned one row and there is a winner**, award the points:
+Calling `increment_points` on top of that pays the winner twice, once now and once when the
+forfeit is resolved.
 
-```sql
-select increment_points('<winner uuid>', 10);
-```
+**"My opponent never approves my proof."** Nothing to do. Seven days after the proof was sent it
+counts as approved and both players get their points.
 
-Running `increment_points` without checking gives someone 20 points for one win. Points are visible
-on the leaderboard, so this gets noticed.
+**"My opponent keeps rejecting my proof."** The winner can reject at most twice, and each
+rejection gives at least 2 more days to send new proof. After the second one they can only approve,
+or it approves itself 7 days after the last proof. If they reject proof that is plainly fine, that
+is a conduct issue between two people who know each other, not something to override in the
+database.
+
+**"I was marked as not doing my forfeit."** No proof arrived within 7 days, so it counts as ducked
+and the winner got +5. Check `settled_at`, `proof_url` and `proof_photo_url` on the
+challenge. If proof really was sent in time, set `forfeit_ducked = false` and
+`proof_approved = true` together, then take 1 off the user's `forfeits_ducked` by hand.
 
 ## Other recurring cases
 
