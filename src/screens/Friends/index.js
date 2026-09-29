@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import { notifyFriendRequest, notifyFriendAccepted } from '../../constants/notifications';
+import ReliabilityBadge from '../../components/ReliabilityBadge';
 import colors from '../../constants/colors';
 
 function Avatar({ username, size = 40, bg = colors.primary }) {
@@ -57,8 +58,8 @@ export default function FriendsScreen({ navigation, route }) {
       .from('friendships')
       .select(`
         id, status, requester_id, addressee_id,
-        requester:profiles!friendships_requester_id_fkey(id, username, full_name),
-        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name)
+        requester:profiles!friendships_requester_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked),
+        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked)
       `)
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
 
@@ -98,7 +99,7 @@ export default function FriendsScreen({ navigation, route }) {
     if (q.length < 2) { setSearchResults([]); return; }
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, full_name')
+      .select('id, username, full_name, forfeits_done, forfeits_ducked')
       .ilike('username', `%${q}%`)
       .neq('id', userId)
       .limit(10);
@@ -179,7 +180,10 @@ export default function FriendsScreen({ navigation, route }) {
         <Avatar username={p?.username} />
         <View style={styles.rowInfo}>
           <Text style={styles.rowName}>{p?.full_name || p?.username}</Text>
-          <Text style={styles.rowSub}>@{p?.username}</Text>
+          <View style={styles.subRow}>
+            <Text style={styles.rowSub}>@{p?.username}</Text>
+            <ReliabilityBadge done={p?.forfeits_done} ducked={p?.forfeits_ducked} username={p?.username} />
+          </View>
         </View>
         {item.kind === 'friend' ? (
           <TouchableOpacity style={styles.removeBtn} onPress={() => removeFriend(item.friendshipId)}>
@@ -290,7 +294,10 @@ export default function FriendsScreen({ navigation, route }) {
                   <Avatar username={item.profile?.username} />
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowName}>{item.profile?.full_name || item.profile?.username}</Text>
-                    <Text style={styles.rowSub}>@{item.profile?.username}</Text>
+                    <View style={styles.subRow}>
+                      <Text style={styles.rowSub}>@{item.profile?.username}</Text>
+                      <ReliabilityBadge done={item.profile?.forfeits_done} ducked={item.profile?.forfeits_ducked} username={item.profile?.username} />
+                    </View>
                   </View>
                   <View style={styles.requestActions}>
                     <TouchableOpacity style={styles.declineBtn} onPress={() => declineRequest(item.id)}>
@@ -336,7 +343,8 @@ const styles = StyleSheet.create({
   avatarText: { color: colors.white, fontWeight: 'bold' },
   rowInfo: { flex: 1, marginLeft: 12 },
   rowName: { color: colors.white, fontWeight: '600', fontSize: 14 },
-  rowSub: { color: colors.textSecondary, fontSize: 12, marginTop: 1 },
+  rowSub: { color: colors.textSecondary, fontSize: 12 },
+  subRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
 
   requestActions: { flexDirection: 'row', gap: 8 },
   declineBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },

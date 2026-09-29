@@ -268,7 +268,7 @@ Reliability is shown instead of win rate, as a word and never a percentage, beca
 | ⛔ Risky | under 50%, or **2 or more ducked** whatever the total |
 
 Resolved means done plus ducked. A forfeit still inside its 7 days counts nowhere.
-`ReliabilityBadge` shows the word on Profile, Home, AcceptPick and Challenge Detail, and the icon
+`ReliabilityBadge` shows the word on Profile, Home, AcceptPick, Challenge Detail and Friends (friends, search results and requests), and the icon
 alone in the Leaderboard and the opponent picker. Tapping it shows the count.
 
 ## The other edge function
