@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Text, ActivityIndicator, View, TouchableOpacity, AppState } from 'react-native';
+import { Text, ActivityIndicator, View, TouchableOpacity, AppState, Image } from 'react-native';
 
 import HomeScreen from '../screens/Home';
 import ChallengesScreen from '../screens/Challenges';
@@ -30,8 +30,14 @@ import colors from '../constants/colors';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+// Home is the DuelFit mark rather than an emoji. It is a little larger than the
+// emoji because its two runners are thinner than a glyph at the same size.
 function TabIcon({ name, focused }) {
-  const icons = { Home: '🏠', Challenges: '⚔️', Leaderboard: '🏆', FriendsTab: '👥', Profile: '👤' };
+  if (name === 'Home') {
+    const size = focused ? 28 : 24;
+    return <Image source={require('../../assets/logo-mark.png')} style={{ width: size, height: size, opacity: focused ? 1 : 0.5 }} />;
+  }
+  const icons = { Challenges: '⚔️', Leaderboard: '🏆', FriendsTab: '👥', Profile: '👤' };
   return (
     <Text style={{ fontSize: focused ? 22 : 18, opacity: focused ? 1 : 0.5 }}>
       {icons[name]}
