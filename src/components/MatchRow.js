@@ -8,7 +8,8 @@ function formatDay(dateStr) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }).toUpperCase();
 }
 
-function TeamSide({ name, badge }) {
+// Also used by the Challenges cards, so a team looks the same everywhere
+export function TeamSide({ name, badge }) {
   const flag = getTeamFlag(name);
   return (
     <View style={styles.side}>

@@ -125,7 +125,7 @@ src/
     challengeContext.js    holds the in progress challenge across the 4 step wizard
     colors.js              the palette
     reliability.js         reliability levels and the proof deadlines, one place for every screen
-  components/              MatchRow (Home, Step1Match) and ReliabilityBadge
+  components/              MatchRow (Home, Step1Match, TeamSide in Challenges), ReliabilityBadge and Avatar
 supabase/
   migrations/              SQL applied by hand in the SQL editor, see ARCHITECTURE.md
   functions/               settle-challenges, delete-account

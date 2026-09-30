@@ -6,6 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
+import { lookupEvent, getF1RaceFlag } from '../../constants/api';
+import { TeamSide } from '../../components/MatchRow';
+import Avatar from '../../components/Avatar';
 import colors from '../../constants/colors';
 
 // match_date is the fixture's calendar date with no kick off time, so this counts
@@ -23,10 +26,29 @@ function startsIn(dateStr) {
   return `Starts in ${days} days`;
 }
 
-function ActiveChallengeCard({ item, currentUserId, onAccept, onDecline, onCancel, onPress }) {
+// Home over away with logos, as on Home. F1 challenges are stored with the race
+// name as the home team and 'F1 Race' as the away team, see Step4Opponent.
+function MatchTeams({ item, badges }) {
+  if (item.match_away_team === 'F1 Race') {
+    return (
+      <Text style={styles.raceName} numberOfLines={2}>
+        {getF1RaceFlag(item.match_home_team)} {item.match_home_team}
+      </Text>
+    );
+  }
+  return (
+    <View style={styles.matchTeams}>
+      <TeamSide name={item.match_home_team} badge={item.match_home_badge || badges?.home} />
+      <TeamSide name={item.match_away_team} badge={item.match_away_badge || badges?.away} />
+    </View>
+  );
+}
+
+function ActiveChallengeCard({ item, badges, currentUserId, onAccept, onDecline, onCancel, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
   const isSent = item.challenger_id === currentUserId;
-  const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
+  const other = isReceived ? item.challenger : item.opponent;
+  const otherUser = other?.username;
   const isPending = item.status === 'pending';
   const statusColor = isPending ? '#F59E0B' : '#10B981';
   const statusLabel = isPending ? 'Pending' : 'Active';
@@ -34,9 +56,7 @@ function ActiveChallengeCard({ item, currentUserId, onAccept, onDecline, onCance
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.cardTop}>
-        <View style={styles.avatarSmall}>
-          <Text style={styles.avatarSmallText}>{otherUser?.[0]?.toUpperCase() || '?'}</Text>
-        </View>
+        <Avatar username={otherUser} url={other?.avatar_url} size={36} />
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.cardTitle}>
             {isReceived ? `⚔️ vs @${otherUser}` : `📤 @${otherUser}`}
@@ -50,11 +70,7 @@ function ActiveChallengeCard({ item, currentUserId, onAccept, onDecline, onCance
 
       <View style={styles.matchRow}>
         <Text style={styles.matchLeague}>{item.match_league}</Text>
-        <View style={styles.matchTeams}>
-          <Text style={styles.teamName} numberOfLines={1}>{item.match_home_team}</Text>
-          <Text style={styles.vs}>VS</Text>
-          <Text style={styles.teamName} numberOfLines={1}>{item.match_away_team}</Text>
-        </View>
+        <MatchTeams item={item} badges={badges} />
       </View>
 
       <View style={styles.picksRow}>
@@ -89,9 +105,10 @@ function ActiveChallengeCard({ item, currentUserId, onAccept, onDecline, onCance
   );
 }
 
-function CompletedChallengeCard({ item, currentUserId, onPress }) {
+function CompletedChallengeCard({ item, badges, currentUserId, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
-  const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
+  const other = isReceived ? item.challenger : item.opponent;
+  const otherUser = other?.username;
   const isWon = item.winner_id === currentUserId;
   const isLost = item.winner_id && item.winner_id !== currentUserId;
   const resultColor = isWon ? '#10B981' : isLost ? '#EF4444' : colors.textSecondary;
@@ -100,9 +117,7 @@ function CompletedChallengeCard({ item, currentUserId, onPress }) {
   return (
     <TouchableOpacity style={[styles.card, styles.completedCard]} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.cardTop}>
-        <View style={[styles.avatarSmall, { backgroundColor: resultColor + '33' }]}>
-          <Text style={styles.avatarSmallText}>{otherUser?.[0]?.toUpperCase() || '?'}</Text>
-        </View>
+        <Avatar username={otherUser} url={other?.avatar_url} size={36} bg={resultColor + '33'} />
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.cardTitle}>
             vs @{otherUser}
@@ -115,11 +130,7 @@ function CompletedChallengeCard({ item, currentUserId, onPress }) {
 
       <View style={styles.matchRow}>
         <Text style={styles.matchLeague}>{item.match_league}</Text>
-        <View style={styles.matchTeams}>
-          <Text style={styles.teamName} numberOfLines={1}>{item.match_home_team}</Text>
-          <Text style={styles.vs}>VS</Text>
-          <Text style={styles.teamName} numberOfLines={1}>{item.match_away_team}</Text>
-        </View>
+        <MatchTeams item={item} badges={badges} />
       </View>
 
       <View style={styles.picksRow}>
@@ -145,6 +156,9 @@ export default function ChallengesScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const realtimeSubRef = useRef(null);
+  // Logos for challenges created before match_home_badge existed, by match_id
+  const [lookedUpBadges, setLookedUpBadges] = useState({});
+  const requestedBadges = useRef(new Set());
 
   useFocusEffect(
     useCallback(() => {
@@ -180,14 +194,32 @@ export default function ChallengesScreen({ navigation }) {
       .from('challenges')
       .select(`
         *,
-        challenger:profiles!challenges_challenger_id_fkey(username),
-        opponent:profiles!challenges_opponent_id_fkey(username)
+        challenger:profiles!challenges_challenger_id_fkey(username, avatar_url),
+        opponent:profiles!challenges_opponent_id_fkey(username, avatar_url)
       `)
       .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
       .order('created_at', { ascending: false });
 
     if (!error) setChallenges(data || []);
     setLoading(false);
+    if (!error) lookUpMissingBadges(data || []);
+  }
+
+  // One lookup per match, never repeated, through the serialised queue in api.js.
+  // Only older challenges need it, new ones store the badges when created.
+  function lookUpMissingBadges(list) {
+    const ids = [...new Set(list
+      .filter(c => c.match_id && !c.match_home_badge && c.match_away_team !== 'F1 Race')
+      .map(c => c.match_id))]
+      .filter(id => !requestedBadges.current.has(id));
+    ids.forEach(id => {
+      requestedBadges.current.add(id);
+      lookupEvent(id).then(data => {
+        const e = data?.events?.[0];
+        if (!e) return;
+        setLookedUpBadges(prev => ({ ...prev, [id]: { home: e.strHomeTeamBadge, away: e.strAwayTeamBadge } }));
+      }).catch(() => {});
+    });
   }
 
   async function onRefresh() {
@@ -291,6 +323,7 @@ export default function ChallengesScreen({ navigation }) {
             tab === 'active' ? (
               <ActiveChallengeCard
                 item={item}
+                badges={lookedUpBadges[item.match_id]}
                 currentUserId={userId}
                 onAccept={handleAccept}
                 onDecline={handleDecline}
@@ -300,6 +333,7 @@ export default function ChallengesScreen({ navigation }) {
             ) : (
               <CompletedChallengeCard
                 item={item}
+                badges={lookedUpBadges[item.match_id]}
                 currentUserId={userId}
                 onPress={() => navigation.navigate('ChallengeDetail', { challenge: item, currentUserId: userId })}
               />
@@ -327,8 +361,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
   completedCard: { opacity: 0.85 },
   cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  avatarSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarSmallText: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
   cardTitle: { color: colors.white, fontWeight: '600', fontSize: 14 },
   cardDate: { color: colors.textSecondary, fontSize: 11, marginTop: 2 },
 
@@ -337,9 +369,8 @@ const styles = StyleSheet.create({
 
   matchRow: { backgroundColor: colors.background, borderRadius: 10, padding: 12, marginBottom: 10 },
   matchLeague: { color: colors.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
-  matchTeams: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  teamName: { flex: 1, color: colors.white, fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
-  vs: { color: colors.primary, fontWeight: 'bold', fontSize: 11, marginHorizontal: 6 },
+  matchTeams: { gap: 6 },
+  raceName: { color: colors.white, fontWeight: 'bold', fontSize: 14 },
 
   picksRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   pickItem: { flex: 1, alignItems: 'center' },

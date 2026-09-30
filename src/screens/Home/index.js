@@ -10,6 +10,7 @@ import { getUpcomingMatches, getAvailableSports, WINDOW_DAYS } from '../../const
 import { useChallenge } from '../../constants/challengeContext';
 import MatchRow from '../../components/MatchRow';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
+import Avatar from '../../components/Avatar';
 import colors from '../../constants/colors';
 
 // The rest are one tap away in Challenges, the matches are what Home is for.
@@ -123,7 +124,7 @@ export default function HomeScreen({ navigation }) {
 
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('username, forfeits_done, forfeits_ducked')
+      .select('username, forfeits_done, forfeits_ducked, avatar_url')
       .eq('id', user.id)
       .single();
     if (profileData) setProfile(profileData);
@@ -230,9 +231,7 @@ export default function HomeScreen({ navigation }) {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.headerLeft} onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{username[0].toUpperCase()}</Text>
-            </View>
+            <Avatar username={username} url={profile?.avatar_url} size={44} />
             <Text style={styles.username}>@{username}</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -381,8 +380,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingBottom: 12 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.white, fontWeight: 'bold', fontSize: 18 },
   username: { color: colors.white, fontWeight: 'bold', fontSize: 16, flexShrink: 1 },
   notifBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   notifIcon: { fontSize: 20 },

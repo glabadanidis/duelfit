@@ -44,8 +44,16 @@ One row per user, `id` matches `auth.users.id`.
 | `push_token` | Expo push token, written by `savePushToken()` on every app open |
 | `forfeits_done` | forfeits delivered as the loser: proof approved, by the winner or automatically on day 7 |
 | `forfeits_ducked` | forfeits with no proof within 7 days of settlement |
+| `avatar_url` | public URL of the profile photo in the `avatars` bucket, null shows initials. Set from Profile by tapping the avatar |
 
-There is no `email` column (the address lives in `auth.users`) and no `avatar_url` column.
+There is no `email` column (the address lives in `auth.users`).
+
+Profile photos live in the public `avatars` bucket as `avatars/<user id>/<timestamp>.jpg`, 2 MB and
+images only. Storage policies let a player insert, read and delete only inside their own folder.
+Every upload gets a new name so no cached old photo lingers, and the previous file is removed once
+the new URL is saved. `src/components/Avatar.js` shows it on Home, Friends, Challenges and the
+opponent step, falling back to the first letter; Profile has its own larger one with the upload
+spinner. The Leaderboard, hidden for now, still shows initials.
 
 Only logged in users can read `profiles`. Anonymous callers get nothing, see
 [Row level security](#row-level-security).
@@ -61,7 +69,8 @@ The core table.
 |---|---|
 | `id` | uuid |
 | `match_id` | TheSportsDB event id, this is what settlement looks up |
-| `match_home_team`, `match_away_team` | denormalised so the UI never needs a second API call |
+| `match_home_team`, `match_away_team` | denormalised so the UI never needs a second API call. F1 stores the race name as home and `F1 Race` as away |
+| `match_home_badge`, `match_away_badge` | team logo URLs, set at creation. Null on challenges older than `20260930000000`; the Challenges list looks those up once per match through the queue |
 | `match_date` | date the fixture starts, drives settlement eligibility |
 | `sport` | `football`, `basketball` or `f1` |
 | `challenger_id`, `opponent_id` | both foreign keys to `profiles` |
@@ -131,7 +140,7 @@ RLS is on for all three tables. What the live database actually has, verified 20
 
 On top of the UPDATE policy, `authenticated` has UPDATE privilege on `friendships.status` only, so
 accepting a request cannot also rewrite who it is between. Likewise on `profiles` it has UPDATE on
-`username`, `full_name` and `push_token` only, so nobody can write their own `points`.
+`username`, `full_name`, `push_token` and `avatar_url` only, so nobody can write their own `points`.
 
 **Players never decide a result.** RLS cannot compare old and new values, so the
 `challenges_guard_client_update` BEFORE UPDATE trigger does it. For the `authenticated` and `anon`
@@ -363,7 +372,8 @@ username in bold with the reliability word under it, no full name. Each friend o
 button, and so does every player found under Other players, since anyone can be challenged. It resets
 the wizard, puts that player in `challenge.opponent` and opens Step1Match, so they are already
 selected in Step4Opponent, which lists a non-friend under "Chosen opponent". The Invite Friends
-button under the search box has no action yet. The stack copy has no ⚔️, a reset there would wipe the
+button under the search box has no action yet. Requests you sent sit below the friends list as
+"Waiting for acceptance (N)", collapsed until Show all, and only while the search box is empty. The stack copy has no ⚔️, a reset there would wipe the
 draft underneath. Home's match cards clear `opponent` so a stale one cannot carry over.
 
 - **Tabs:** Home, Challenges, Friends, Profile
@@ -433,6 +443,8 @@ Applied by hand in the SQL editor, in order, and verified:
 | `20260928000004_points_for_keeping_your_word.sql` | points at forfeit resolution, the day 7 sweep, reliability columns on challenges |
 | `20260929000000_reject_proof.sql` | the winner can reject proof, and the rewards trigger renamed so it fires after the guard |
 | `20260929000001_realtime_friendships.sql` | challenges and friendships in the realtime publication, for the tab badges |
+| `20260930000000_challenge_team_badges.sql` | team logo URLs on challenges, for the Challenges list |
+| `20260930000001_profile_avatars.sql` | `profiles.avatar_url`, the public `avatars` bucket and own-folder storage policies |
 
 To see what is really there, in the SQL editor:
 
@@ -458,7 +470,7 @@ Worth knowing before you touch anything, in rough order of how much they matter.
 - **What a player may change on a challenge is enforced by a trigger, not by RLS.** If a new client
   update is added (a new column, a new transition), `challenges_guard_client_update` has to allow it
   or it fails with `42501`. That is intended: widen the trigger deliberately, never drop it.
-- **`src/components/` holds only `MatchRow` and `ReliabilityBadge`.** The rest of the card and row markup is still
+- **`src/components/` holds only `MatchRow`, `ReliabilityBadge` and `Avatar`.** The rest of the card and row markup is still
   duplicated across screens, which is why `Challenges/Detail.js` is over 600 lines.
 - **No tests of any kind.**
 - **TheSportsDB free tier is rate limited and has no SLA.** It is a single point of failure for both

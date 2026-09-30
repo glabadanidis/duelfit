@@ -100,8 +100,10 @@ non trivial changes. This file is the conventions and the traps.
   `src/constants/reliability.js`. Change one, change the other.
 - **Challenges are open to anyone, friends are only listed first.** Do not add a friendship check to
   the challenges INSERT policy, that was tried and explicitly rejected.
-- **`src/components/` holds only `MatchRow` and `ReliabilityBadge`.** `MatchRow` is the date and
-  kick off block plus the two team rows, shared by Home and Step1Match. If you are about to copy a card into a third screen, extract it
+- **`src/components/` holds only `MatchRow`, `ReliabilityBadge` and `Avatar`.** `MatchRow` is the
+  date and kick off block plus the two team rows, shared by Home and Step1Match. Its `TeamSide` (flag
+  or logo plus name) is also used by the Challenges cards. `Avatar` is the profile photo or initial
+  circle; any query feeding it must select `avatar_url`. If you are about to copy a card into a third screen, extract it
   instead. That is how the two largest files got that big.
 
 ## Before you commit

@@ -9,15 +9,8 @@ import { supabase } from '../../constants/supabase';
 import { notifyFriendRequest, notifyFriendAccepted } from '../../constants/notifications';
 import { useChallenge } from '../../constants/challengeContext';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
+import Avatar from '../../components/Avatar';
 import colors from '../../constants/colors';
-
-function Avatar({ username, size = 40, bg = colors.primary }) {
-  return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
-      <Text style={[styles.avatarText, { fontSize: size * 0.38 }]}>{username?.[0]?.toUpperCase() || '?'}</Text>
-    </View>
-  );
-}
 
 // Username in bold with the reliability word under it. No full name: for most
 // players it is the username again and the row read twice.
@@ -45,6 +38,8 @@ export default function FriendsScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pendingIds, setPendingIds] = useState(new Set());
+  const [sent, setSent] = useState([]);
+  const [showSent, setShowSent] = useState(false);
   // As a tab the screen stays mounted, so the initial useState above only sees
   // the first tab param. This picks up later ones, like the Home badge opening
   // Requests.
@@ -73,8 +68,8 @@ export default function FriendsScreen({ navigation, route }) {
       .from('friendships')
       .select(`
         id, status, requester_id, addressee_id,
-        requester:profiles!friendships_requester_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked),
-        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked)
+        requester:profiles!friendships_requester_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked, avatar_url),
+        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked, avatar_url)
       `)
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
 
@@ -87,12 +82,13 @@ export default function FriendsScreen({ navigation, route }) {
       f => f.status === 'pending' && f.addressee_id === user.id
     ).map(f => ({ id: f.id, profile: f.requester }));
 
-    const sentIds = new Set(
-      (fs || []).filter(f => f.status === 'pending' && f.requester_id === user.id)
-        .map(f => f.addressee_id)
-    );
+    const outgoing = (fs || []).filter(
+      f => f.status === 'pending' && f.requester_id === user.id
+    ).map(f => ({ id: f.id, profile: f.addressee }));
+    const sentIds = new Set(outgoing.map(f => f.profile?.id));
 
     setFriends(accepted);
+    setSent(outgoing);
     setRequests(incoming);
     setPendingIds(sentIds);
     setLoading(false);
@@ -114,7 +110,7 @@ export default function FriendsScreen({ navigation, route }) {
     if (q.length < 2) { setSearchResults([]); return; }
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, full_name, forfeits_done, forfeits_ducked')
+      .select('id, username, full_name, forfeits_done, forfeits_ducked, avatar_url')
       .ilike('username', `%${q}%`)
       .neq('id', userId)
       .limit(10);
@@ -202,7 +198,7 @@ export default function FriendsScreen({ navigation, route }) {
     const incomingId = incomingByUser.get(p?.id);
     return (
       <View style={styles.row}>
-        <Avatar username={p?.username} />
+        <Avatar username={p?.username} url={p?.avatar_url} />
         <PersonInfo profile={p} />
         <View style={styles.rowActions}>
           {isTab && (
@@ -298,6 +294,26 @@ export default function FriendsScreen({ navigation, route }) {
                     ? <Text style={styles.noMatch}>No friend matches "{searchText.trim()}"</Text>
                     : null
                 }
+                ListFooterComponent={!query && sent.length > 0 ? (
+                  // Collapsed by default: a count, and the list only on Show all
+                  <View style={styles.sentSection}>
+                    <View style={styles.sentHeader}>
+                      <Text style={styles.sentTitle}>📤 Waiting for acceptance ({sent.length})</Text>
+                      <TouchableOpacity onPress={() => setShowSent(v => !v)}>
+                        <Text style={styles.sentToggle}>{showSent ? 'Hide' : 'Show all →'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {showSent && sent.map(s => (
+                      <View key={s.id} style={styles.row}>
+                        <Avatar username={s.profile?.username} url={s.profile?.avatar_url} />
+                        <PersonInfo profile={s.profile} />
+                        <View style={styles.pendingBadge}>
+                          <Text style={styles.pendingBadgeText}>Sent</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 ListEmptyComponent={
                   <View style={styles.emptyCard}>
                     <Text style={styles.emptyEmoji}>👥</Text>
@@ -325,7 +341,7 @@ export default function FriendsScreen({ navigation, route }) {
               }
               renderItem={({ item }) => (
                 <View style={styles.row}>
-                  <Avatar username={item.profile?.username} />
+                  <Avatar username={item.profile?.username} url={item.profile?.avatar_url} />
                   <PersonInfo profile={item.profile} />
                   <View style={styles.requestActions}>
                     <TouchableOpacity style={styles.declineBtn} onPress={() => declineRequest(item.id)}>
@@ -367,13 +383,15 @@ const styles = StyleSheet.create({
   searchInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, fontSize: 14, marginBottom: 12 },
 
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
-  avatar: { alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.white, fontWeight: 'bold' },
   rowInfo: { flex: 1, marginLeft: 12 },
   rowName: { color: colors.white, fontWeight: 'bold', fontSize: 15 },
   subRow: { flexDirection: 'row', marginTop: 4 },
 
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  sentSection: { marginTop: 16 },
+  sentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  sentTitle: { color: colors.textSecondary, fontWeight: '700', fontSize: 13 },
+  sentToggle: { color: colors.primary, fontWeight: '600', fontSize: 13 },
   inviteBtn: { backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 12 },
   inviteBtnText: { color: colors.white, fontWeight: 'bold', fontSize: 14 },
   challengeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },

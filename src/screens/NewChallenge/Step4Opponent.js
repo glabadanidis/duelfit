@@ -9,6 +9,7 @@ import { supabase } from '../../constants/supabase';
 import { useChallenge } from '../../constants/challengeContext';
 import { notifyChallengeSent } from '../../constants/notifications';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
+import Avatar from '../../components/Avatar';
 import colors from '../../constants/colors';
 
 export default function Step4Opponent({ navigation }) {
@@ -42,8 +43,8 @@ export default function Step4Opponent({ navigation }) {
       .from('friendships')
       .select(`
         requester_id,
-        requester:profiles!friendships_requester_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked),
-        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked)
+        requester:profiles!friendships_requester_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked, avatar_url),
+        addressee:profiles!friendships_addressee_id_fkey(id, username, full_name, forfeits_done, forfeits_ducked, avatar_url)
       `)
       .eq('status', 'accepted')
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
@@ -65,7 +66,7 @@ export default function Step4Opponent({ navigation }) {
     if (q.length < 2) { setOthers([]); return; }
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, full_name, forfeits_done, forfeits_ducked')
+      .select('id, username, full_name, forfeits_done, forfeits_ducked, avatar_url')
       .ilike('username', `%${q}%`)
       .neq('id', userId)
       .limit(10);
@@ -91,9 +92,7 @@ export default function Step4Opponent({ navigation }) {
         style={[styles.userCard, opponent?.id === u.id && styles.userCardActive]}
         onPress={() => setOpponent(u)}
       >
-        <View style={styles.userAvatar}>
-          <Text style={styles.userAvatarText}>{u.username[0].toUpperCase()}</Text>
-        </View>
+        <Avatar username={u.username} url={u.avatar_url} />
         <View>
           <View style={styles.userNameRow}>
             <Text style={styles.userUsername}>@{u.username}</Text>
@@ -118,6 +117,8 @@ export default function Step4Opponent({ navigation }) {
       match_away_team: match.strAwayTeam || 'F1 Race',
       match_date: match.dateEvent,
       match_league: match.strLeague,
+      match_home_badge: match.strHomeTeamBadge || null,
+      match_away_badge: match.strAwayTeamBadge || null,
       challenger_pick: pick,
       forfeit,
       status: 'pending',
@@ -243,8 +244,6 @@ const styles = StyleSheet.create({
   searchInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, fontSize: 14, marginBottom: 12 },
   userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: colors.border, gap: 12 },
   userCardActive: { borderColor: colors.primary },
-  userAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  userAvatarText: { color: colors.white, fontWeight: 'bold', fontSize: 16 },
   userNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   userUsername: { color: colors.white, fontWeight: 'bold', fontSize: 14 },
   userFullName: { color: colors.textSecondary, fontSize: 12 },

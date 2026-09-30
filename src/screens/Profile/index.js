@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../constants/supabase';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
 import { reliabilityDetail } from '../../constants/reliability';
@@ -11,8 +13,9 @@ import colors from '../../constants/colors';
 
 export default function ProfileScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
-  const [stats, setStats] = useState({ won: 0, lost: 0, pending: 0, total: 0 });
+  const [stats, setStats] = useState({ won: 0, lost: 0, pending: 0 });
   const [loading, setLoading] = useState(true);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -39,15 +42,54 @@ export default function ProfileScreen({ navigation }) {
     if (profileData) setProfile(profileData);
 
     if (challenges) {
-      const total = challenges.length;
       const completed = challenges.filter(c => c.status === 'completed');
       const won = completed.filter(c => c.winner_id === user.id).length;
       const lost = completed.filter(c => c.winner_id && c.winner_id !== user.id).length;
       const pending = challenges.filter(c => c.status === 'pending' || c.status === 'accepted').length;
-      setStats({ won, lost, pending, total });
+      setStats({ won, lost, pending });
     }
 
     setLoading(false);
+  }
+
+  // Square crop, then into avatars/<user id>/ under a new name each time, see
+  // 20260930000001_profile_avatars.sql. The old file goes only once the new URL
+  // is saved, so a failed upload never leaves the profile pointing at nothing.
+  async function changeAvatar() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission required', 'Please allow access to your photos to set a profile photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5,
+    });
+    if (result.canceled) return;
+
+    setUploadingAvatar(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const path = `${user.id}/${Date.now()}.jpg`;
+      const base64 = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: 'base64' });
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, bytes, { contentType: 'image/jpeg' });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+      const { error: saveError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+      if (saveError) throw saveError;
+
+      const oldPath = profile?.avatar_url?.split('/avatars/')[1];
+      if (oldPath) supabase.storage.from('avatars').remove([oldPath]);
+      setProfile(prev => ({ ...prev, avatar_url: publicUrl }));
+    } catch (e) {
+      Alert.alert('Upload failed', e.message);
+    } finally {
+      setUploadingAvatar(false);
+    }
   }
 
   async function handleLogout() {
@@ -80,19 +122,27 @@ export default function ProfileScreen({ navigation }) {
 
         {/* Avatar + Name */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          <TouchableOpacity onPress={changeAvatar} disabled={uploadingAvatar} activeOpacity={0.8}>
+            <View style={styles.avatar}>
+              {profile?.avatar_url
+                ? <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+                : <Text style={styles.avatarText}>{initials}</Text>}
+              {uploadingAvatar && (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color={colors.white} />
+                </View>
+              )}
+            </View>
+            <View style={styles.avatarEdit}>
+              <Text style={styles.avatarEditIcon}>📷</Text>
+            </View>
+          </TouchableOpacity>
           <Text style={styles.fullName}>{profile?.full_name || 'Player'}</Text>
           <Text style={styles.username}>@{profile?.username}</Text>
         </View>
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.total}</Text>
-            <Text style={styles.statLabel}>Total</Text>
-          </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: '#10B981' }]}>{stats.won}</Text>
             <Text style={styles.statLabel}>Won</Text>
@@ -137,6 +187,11 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
+        {/* No action yet, inviting people who are not on DuelFit is still to be built */}
+        <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.8}>
+          <Text style={styles.inviteBtnText}>✉️ Invite Friends</Text>
+        </TouchableOpacity>
+
         {/* Quick Links */}
         <View style={styles.quickLinks}>
           <TouchableOpacity style={styles.quickLink} onPress={() => navigation.navigate('FriendsTab', { tab: 'friends' })}>
@@ -170,8 +225,12 @@ const styles = StyleSheet.create({
   headerTitle: { color: colors.white, fontSize: 24, fontWeight: 'bold' },
 
   avatarSection: { alignItems: 'center', paddingVertical: 24 },
-  avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  avatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12, overflow: 'hidden' },
+  avatarImage: { width: 88, height: 88 },
   avatarText: { color: colors.white, fontWeight: 'bold', fontSize: 34 },
+  avatarOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.background + 'AA', alignItems: 'center', justifyContent: 'center' },
+  avatarEdit: { position: 'absolute', right: -2, bottom: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  avatarEditIcon: { fontSize: 14 },
   fullName: { color: colors.white, fontWeight: 'bold', fontSize: 22, marginBottom: 4 },
   username: { color: colors.textSecondary, fontSize: 15, marginBottom: 12 },
 
@@ -190,6 +249,9 @@ const styles = StyleSheet.create({
   infoLabel: { color: colors.textSecondary, fontSize: 14 },
   infoValue: { color: colors.white, fontSize: 14, fontWeight: '500' },
   divider: { height: 1, backgroundColor: colors.border },
+
+  inviteBtn: { marginHorizontal: 20, backgroundColor: colors.primary, borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 12 },
+  inviteBtnText: { color: colors.white, fontWeight: 'bold', fontSize: 14 },
 
   quickLinks: { marginHorizontal: 20, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 16, overflow: 'hidden' },
   quickLink: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
