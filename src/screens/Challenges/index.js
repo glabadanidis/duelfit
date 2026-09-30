@@ -8,7 +8,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../constants/supabase';
 import { lookupEvent, getF1RaceFlag } from '../../constants/api';
 import { TeamSide } from '../../components/MatchRow';
-import Avatar from '../../components/Avatar';
 import colors from '../../constants/colors';
 
 // match_date is the fixture's calendar date with no kick off time, so this counts
@@ -47,8 +46,7 @@ function MatchTeams({ item, badges }) {
 function ActiveChallengeCard({ item, badges, currentUserId, onAccept, onDecline, onCancel, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
   const isSent = item.challenger_id === currentUserId;
-  const other = isReceived ? item.challenger : item.opponent;
-  const otherUser = other?.username;
+  const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
   const isPending = item.status === 'pending';
   const statusColor = isPending ? '#F59E0B' : '#10B981';
   const statusLabel = isPending ? 'Pending' : 'Active';
@@ -56,8 +54,7 @@ function ActiveChallengeCard({ item, badges, currentUserId, onAccept, onDecline,
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.cardTop}>
-        <Avatar username={otherUser} url={other?.avatar_url} size={36} />
-        <View style={{ flex: 1, marginLeft: 10 }}>
+        <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>
             {isReceived ? `⚔️ vs @${otherUser}` : `📤 @${otherUser}`}
           </Text>
@@ -107,8 +104,7 @@ function ActiveChallengeCard({ item, badges, currentUserId, onAccept, onDecline,
 
 function CompletedChallengeCard({ item, badges, currentUserId, onPress }) {
   const isReceived = item.opponent_id === currentUserId;
-  const other = isReceived ? item.challenger : item.opponent;
-  const otherUser = other?.username;
+  const otherUser = isReceived ? item.challenger?.username : item.opponent?.username;
   const isWon = item.winner_id === currentUserId;
   const isLost = item.winner_id && item.winner_id !== currentUserId;
   const resultColor = isWon ? '#10B981' : isLost ? '#EF4444' : colors.textSecondary;
@@ -117,8 +113,7 @@ function CompletedChallengeCard({ item, badges, currentUserId, onPress }) {
   return (
     <TouchableOpacity style={[styles.card, styles.completedCard]} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.cardTop}>
-        <Avatar username={otherUser} url={other?.avatar_url} size={36} bg={resultColor + '33'} />
-        <View style={{ flex: 1, marginLeft: 10 }}>
+        <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>
             vs @{otherUser}
           </Text>
@@ -194,8 +189,8 @@ export default function ChallengesScreen({ navigation }) {
       .from('challenges')
       .select(`
         *,
-        challenger:profiles!challenges_challenger_id_fkey(username, avatar_url),
-        opponent:profiles!challenges_opponent_id_fkey(username, avatar_url)
+        challenger:profiles!challenges_challenger_id_fkey(username),
+        opponent:profiles!challenges_opponent_id_fkey(username)
       `)
       .or(`challenger_id.eq.${user.id},opponent_id.eq.${user.id}`)
       .order('created_at', { ascending: false });

@@ -51,8 +51,8 @@ There is no `email` column (the address lives in `auth.users`).
 Profile photos live in the public `avatars` bucket as `avatars/<user id>/<timestamp>.jpg`, 2 MB and
 images only. Storage policies let a player insert, read and delete only inside their own folder.
 Every upload gets a new name so no cached old photo lingers, and the previous file is removed once
-the new URL is saved. `src/components/Avatar.js` shows it on Home, Friends, Challenges and the
-opponent step, falling back to the first letter; Profile has its own larger one with the upload
+the new URL is saved. `src/components/Avatar.js` shows it on Home, Friends and the opponent step
+(Challenges cards have none, the title already names the opponent), falling back to the first letter; Profile has its own larger one with the upload
 spinner. The Leaderboard, hidden for now, still shows initials.
 
 Only logged in users can read `profiles`. Anonymous callers get nothing, see
