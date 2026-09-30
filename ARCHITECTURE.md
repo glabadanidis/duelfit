@@ -166,7 +166,7 @@ Three things about Postgres RLS that have caused real bugs here:
       |                                                     |
       |  Step1Match   pick a league, pick a fixture          |
       |  Step2Pick    pick a side                            |
-      |  Step3Forfeit type the forfeit                       |
+      |  Step3Forfeit a category, then a forfeit, or custom  |
       |  Step4Opponent friends first, or any username        |
       |                                                     |
       +--> INSERT challenges  status = 'pending' -----------+
