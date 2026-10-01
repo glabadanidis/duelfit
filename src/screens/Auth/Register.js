@@ -12,6 +12,7 @@ export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState(null); // 'checking' | 'available' | 'taken' | 'invalid'
   const debounceRef = useRef(null);
@@ -73,7 +74,9 @@ export default function RegisterScreen({ navigation }) {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, username } },
+      // invite_code is the inviter's username, recorded by the trigger in
+      // 20261001000001_referrals.sql. An unknown code is ignored, never an error.
+      options: { data: { full_name: fullName, username, invite_code: inviteCode.trim() || undefined } },
     });
     setLoading(false);
     if (error) return Alert.alert('Error', error.message);
@@ -118,6 +121,8 @@ export default function RegisterScreen({ navigation }) {
         value={password} onChangeText={setPassword} secureTextEntry />
       <TextInput style={styles.input} placeholder="Confirm Password" placeholderTextColor={colors.textSecondary}
         value={confirm} onChangeText={setConfirm} secureTextEntry />
+      <TextInput style={styles.input} placeholder="Invite code (optional)" placeholderTextColor={colors.textSecondary}
+        value={inviteCode} onChangeText={setInviteCode} autoCapitalize="none" autoCorrect={false} />
 
       <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
         {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Create Account</Text>}

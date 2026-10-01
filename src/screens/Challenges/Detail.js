@@ -183,7 +183,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
     const { error } = await supabase.from('challenges').update({ proof_approved: true }).eq('id', challenge.id).eq('winner_id', resolvedUserId);
     if (error) { Alert.alert('Error', error.message); return; }
     setChallenge(prev => ({ ...prev, proof_approved: true }));
-    Alert.alert('Proof approved! ✅', `The forfeit has been confirmed. You get +10 points and @${theirUsername} gets +5 for keeping their word.`, [
+    Alert.alert('Proof approved! ✅', `The forfeit has been confirmed and counts towards @${theirUsername}'s reliability.`, [
       { text: 'OK', onPress: () => navigation.goBack() },
     ]);
   }
@@ -193,7 +193,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
     Alert.alert(
       'Reject proof?',
       `The proof is removed and @${theirUsername} gets at least ${REJECT_GRACE_DAYS} more days to send new proof. `
-        + 'If nothing arrives, it counts as a missed forfeit and you get +5 instead of +10.'
+        + 'If nothing arrives, it counts as a missed forfeit.'
         + (left === 0 ? '\n\nThis is your last rejection. After it you can only approve.' : ''),
       [
         { text: 'Cancel', style: 'cancel' },
@@ -259,15 +259,15 @@ export default function ChallengeDetailScreen({ route, navigation }) {
             </Text>
             {isWinner && (
               <Text style={styles.resultSub}>
-                {challenge.winner_points_awarded
-                  ? (ducked ? '+5 points earned' : '+10 points earned')
-                  : '+10 points once the forfeit is done, +5 if it is missed'}
+                {challenge.proof_approved
+                  ? 'Forfeit delivered ✅'
+                  : ducked ? 'Forfeit missed' : `Waiting for @${theirUsername} to do the forfeit`}
               </Text>
             )}
             {isLoser && <Text style={styles.resultSub}>Forfeit: {challenge.forfeit}</Text>}
             {isLoser && !challenge.proof_approved && !ducked && (
               <Text style={styles.resultSub}>
-                +5 points when your proof is approved{deadlineText ? ` · due by ${deadlineText}` : ''}
+                {deadlineText ? `Send your proof by ${deadlineText}` : 'Send your proof to the winner'}
               </Text>
             )}
           </View>
@@ -283,7 +283,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
               <Text style={styles.duckedText}>
                 {isLoser
                   ? `⛔ ${challenge.proof_rejected_at ? 'Your proof was rejected and no new proof came in time' : 'No proof within 7 days'}. This counts as a missed forfeit.`
-                  : `⛔ ${challenge.proof_rejected_at ? 'No new proof after your rejection' : 'No proof within 7 days'}. You got +5 points instead of 10, and it counts against @${theirUsername}'s reliability.`}
+                  : `⛔ ${challenge.proof_rejected_at ? 'No new proof after your rejection' : 'No proof within 7 days'}. It counts against @${theirUsername}'s reliability.`}
               </Text>
             </View>
           )}
@@ -393,7 +393,7 @@ export default function ChallengeDetailScreen({ route, navigation }) {
                 <>
                   {isLoser && (
                     <Text style={styles.proofSubmittedLabel}>
-                      {challenge.proof_approved ? '✅ Proof approved, +5 points' : '✅ Proof submitted, waiting for approval'}
+                      {challenge.proof_approved ? '✅ Proof approved' : '✅ Proof submitted, waiting for approval'}
                     </Text>
                   )}
                   {isWinner && !challenge.proof_approved && (

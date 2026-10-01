@@ -22,7 +22,7 @@ const slides = [
     id: '3',
     emoji: '🏆',
     title: 'Connect.\nCompete.\nForfeit.',
-    subtitle: 'Track your wins, climb the leaderboard, and never let your friends forget.',
+    subtitle: 'Track your wins, build your reliability, and never let your friends forget.',
   },
 ];
 

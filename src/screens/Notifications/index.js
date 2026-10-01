@@ -61,7 +61,7 @@ function notifFromChallenge(challenge, currentUserId) {
       emoji: won ? '🏆' : '👎',
       title: won ? 'You won the challenge!' : 'You lost the challenge',
       body: `${challenge.match_home_team} vs ${challenge.match_away_team}`,
-      sub: won ? 'Points added to your profile' : `Forfeit: ${challenge.forfeit}`,
+      sub: won ? `They owe you: ${challenge.forfeit}` : `Forfeit: ${challenge.forfeit}`,
       color: won ? '#F59E0B' : '#EF4444',
       time: challenge.updated_at || challenge.created_at,
     };

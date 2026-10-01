@@ -136,7 +136,7 @@ export default function SettingsScreen({ navigation }) {
           text: 'Delete', style: 'destructive',
           onPress: () => Alert.alert(
             'Are you sure?',
-            'Last chance — all your challenges, points and profile will be gone forever.',
+            'Last chance — all your challenges and your profile will be gone forever.',
             [
               { text: 'Cancel', style: 'cancel' },
               {

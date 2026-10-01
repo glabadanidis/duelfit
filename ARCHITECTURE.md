@@ -71,7 +71,7 @@ The core table.
 | `match_id` | TheSportsDB event id, this is what settlement looks up |
 | `match_home_team`, `match_away_team` | denormalised so the UI never needs a second API call. F1 stores the race name as home and `F1 Race` as away |
 | `match_home_badge`, `match_away_badge` | team logo URLs, set at creation. Null on challenges older than `20260930000000`; the Challenges list looks those up once per match through the queue |
-| `match_date` | date the fixture starts, drives settlement eligibility |
+| `match_date` | date the fixture starts, drives settlement eligibility. Stored as **text** (`YYYY-MM-DD...`), not date: compare as text or cast `left(match_date, 10)::date` |
 | `sport` | `football`, `basketball` or `f1` |
 | `challenger_id`, `opponent_id` | both foreign keys to `profiles` |
 | `challenger_pick`, `opponent_pick` | team name, driver name, or `Draw` |
@@ -108,6 +108,25 @@ sent in, so A and B cannot both have a pending request to each other.
 
 Friends are a shortcut, not a gate. They are listed first when picking an opponent, but any player
 can be challenged by searching their username.
+
+### `referrals`
+
+Who invited whom, recorded at signup and not shown anywhere in the app yet.
+
+| Column | Notes |
+|---|---|
+| `referred_id` | the new player, primary key, so one inviter per player |
+| `referrer_id` | the player who invited them, null if that account was deleted |
+| `invite_code` | the code as typed, lower case. It is the inviter's username |
+| `created_at` | when the new profile was created |
+
+The Invite Friends buttons on Friends and Profile open the system share sheet with the player's
+username as the invite code (`src/constants/invite.js`). Register sends the optional code as
+`invite_code` in the `signUp` metadata, and the `profiles_record_referral` AFTER INSERT trigger
+looks it up and inserts the row. An unknown code, or any error, is skipped so a signup never fails
+because of it. RLS is on with no policy and no grants, so the table is read only from the SQL
+editor; the report query is at the top of `20261001000001_referrals.sql`. A separate table rather
+than a `profiles` column because every logged in user can read `profiles`.
 
 ### RPC
 
@@ -215,8 +234,17 @@ deliberate, there is no draft persistence.
 ## Settlement
 
 `supabase/functions/settle-challenges/index.ts`, triggered hourly by `pg_cron` at `0 * * * *` using
-`pg_net` to POST to the function URL with a service role bearer token pulled from
-`current_setting('app.service_role_key', true)`.
+`pg_net` to POST to the function URL with a service role bearer token read from Supabase Vault
+(`vault.decrypted_secrets`, name `service_role_key`), see `20261001000000_settle_cron_vault_auth.sql`.
+Until 2026-10-01 it read `current_setting('app.service_role_key', true)`, which was never set on the
+live database, so every hourly call went out without a key and got 401: nothing settled
+automatically. The secret is stored once by hand in the SQL editor and never in the repo. It must be
+the `sb_secret_…` key from Settings > API Keys, not the legacy `eyJ…` service_role JWT: the function
+compares the header with its `SUPABASE_SERVICE_ROLE_KEY` character for character, and on this project
+that variable holds the `sb_secret_` key. Fixed and verified 2026-10-01 (manual call returned 200).
+Rotating that key means updating Vault too, or settlement silently stops again. To check
+it works, `select status_code, content from net._http_response order by created desc limit 5;`
+should show `200 {"settled":…}`.
 
 The function:
 
@@ -372,7 +400,7 @@ username in bold with the reliability word under it, no full name. Each friend o
 button, and so does every player found under Other players, since anyone can be challenged. It resets
 the wizard, puts that player in `challenge.opponent` and opens Step1Match, so they are already
 selected in Step4Opponent, which lists a non-friend under "Chosen opponent". The Invite Friends
-button under the search box has no action yet. Requests you sent sit below the friends list as
+button under the search box opens the share sheet with the player's invite code, see `referrals`. Requests you sent sit below the friends list as
 "Waiting for acceptance (N)", collapsed until Show all, and only while the search box is empty. The stack copy has no ⚔️, a reset there would wipe the
 draft underneath. Home's match cards clear `opponent` so a stale one cannot carry over.
 
@@ -445,6 +473,8 @@ Applied by hand in the SQL editor, in order, and verified:
 | `20260929000001_realtime_friendships.sql` | challenges and friendships in the realtime publication, for the tab badges |
 | `20260930000000_challenge_team_badges.sql` | team logo URLs on challenges, for the Challenges list |
 | `20260930000001_profile_avatars.sql` | `profiles.avatar_url`, the public `avatars` bucket and own-folder storage policies |
+| `20261001000000_settle_cron_vault_auth.sql` | the hourly settle call reads the service role key from Vault. Needs the secret stored first, see the file |
+| `20261001000001_referrals.sql` | `referrals` table and the signup trigger that records who invited whom |
 
 To see what is really there, in the SQL editor:
 

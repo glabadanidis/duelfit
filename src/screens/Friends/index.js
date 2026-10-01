@@ -10,6 +10,7 @@ import { notifyFriendRequest, notifyFriendAccepted } from '../../constants/notif
 import { useChallenge } from '../../constants/challengeContext';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
 import Avatar from '../../components/Avatar';
+import { shareInvite } from '../../constants/invite';
 import colors from '../../constants/colors';
 
 // Username in bold with the reliability word under it. No full name: for most
@@ -277,8 +278,7 @@ export default function FriendsScreen({ navigation, route }) {
                 autoCorrect={false}
                 clearButtonMode="while-editing"
               />
-              {/* No action yet, inviting people who are not on DuelFit is still to be built */}
-              <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.8} onPress={() => shareInvite(myUsername)}>
                 <Text style={styles.inviteBtnText}>✉️ Invite Friends</Text>
               </TouchableOpacity>
               <FlatList

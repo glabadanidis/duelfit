@@ -7,7 +7,8 @@ non trivial changes. This file is the conventions and the traps.
 
 - **Never commit a secret.** `.env` is gitignored and has never been committed, keep it that way.
   The Supabase **service role key** must not appear anywhere in this repo, not in `.env`, not in a
-  comment, not in a migration. It belongs only in the Supabase edge function environment.
+  comment, not in a migration. It belongs only in the Supabase edge function environment and in
+  Vault (`service_role_key`, stored by hand in the SQL editor for the hourly settle call).
 - **Never remove the `.eq('status', 'accepted')` guard** on the settlement update in
   `supabase/functions/settle-challenges/index.ts`. It is the only thing preventing a double points
   award when two settlement runs overlap.

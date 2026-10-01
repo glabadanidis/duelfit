@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../constants/supabase';
 import ReliabilityBadge from '../../components/ReliabilityBadge';
 import { reliabilityDetail } from '../../constants/reliability';
+import { shareInvite } from '../../constants/invite';
 import colors from '../../constants/colors';
 
 export default function ProfileScreen({ navigation }) {
@@ -187,8 +188,7 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-        {/* No action yet, inviting people who are not on DuelFit is still to be built */}
-        <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.8} onPress={() => shareInvite(profile?.username)}>
           <Text style={styles.inviteBtnText}>✉️ Invite Friends</Text>
         </TouchableOpacity>
 
